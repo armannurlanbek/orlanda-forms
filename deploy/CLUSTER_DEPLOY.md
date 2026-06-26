@@ -18,7 +18,7 @@ to it.
 | App name | `orlanda-forms` |
 | Database / user | `db_orlandaforms` / `orlandaforms` |
 | App folder (both servers) | `/opt/orlanda-forms` |
-| Local port | `8001` (free; 5432/6432/8000/23267 are taken — Doc 4 §0) |
+| Local port | `8005` (free; taken: 5432/6432, 23267, 8000–8004, 5678) |
 | Hostname | `forms.n8norlanda.com` |
 | Health path (LB) | `/healthz` (DB-free) |
 | Postgres extensions | none |
@@ -92,7 +92,7 @@ JWT_SECRET=<openssl rand -base64 48>
 ANTHROPIC_API_KEY=<key>
 MONDAY_API_TOKEN=<token>
 APP_URL=https://forms.n8norlanda.com
-PORT=8001
+PORT=8005
 ANTHROPIC_MODEL=claude-sonnet-4-6
 SUBMISSION_RETENTION_DAYS=90
 # optional: SENTRY_DSN, ADMIN_EMAIL, ADMIN_PASSWORD, the rate-limit overrides
@@ -114,8 +114,8 @@ On the **PRIMARY**:
 cd /opt/orlanda-forms
 docker compose up -d --build
 docker compose logs --tail 60 -f      # watch migrations apply + API listen; Ctrl+C when stable
-curl -i http://127.0.0.1:8001/healthz # expect 200
-curl -i http://127.0.0.1:8001/health  # 200 = app -> router -> primary DB OK
+curl -i http://127.0.0.1:8005/healthz # expect 200
+curl -i http://127.0.0.1:8005/health  # 200 = app -> router -> primary DB OK
 ```
 Seed the first admin (once, on the primary):
 ```
@@ -143,7 +143,7 @@ Keep `APP_DIRS` identical on both servers.
 `sudo nano /etc/cloudflared/config.yml`, add above the final `http_status:404`:
 ```yaml
   - hostname: forms.n8norlanda.com
-    service: http://localhost:8001
+    service: http://localhost:8005
 ```
 Then `sudo systemctl restart cloudflared` on each (don't touch the per-server
 `tunnel:`/`credentials-file:` lines).

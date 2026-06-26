@@ -19,7 +19,10 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
-      # Pick a free host port (Playbook §0): 5432/6432/8000/23267 are taken.
-      PORT: '8001'
+      # Free host port. Taken on the cluster: 5432/6432 (pg/router), 23267
+      # (health), 8000 roman, 8001 platform, 8002 progress, 8003 bot-admin,
+      # 8004 client-pages, 5678 n8n. 8005 is free.
+      PORT: '8005'
       DATABASE_URL: postgresql://orlandaforms:${DB_PASSWORD}@127.0.0.1:6432/db_orlandaforms
       APP_URL: https://forms.n8norlanda.com
+      # Note: the public origin is the LB hostname; PORT above is the local bind.
