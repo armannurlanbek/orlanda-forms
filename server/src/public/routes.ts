@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import {
+  DEFAULT_THEME,
   UPLOAD_LIMITS,
   normalizeTheme,
   type PublicFormDTO,
@@ -44,6 +45,17 @@ publicRouter.get(
       options: (q.options as QuestionConfig | null) ?? null,
     }));
 
+    // Re-validate the stored theme at the public boundary (§16.8): only validated
+    // colors ever reach the browser. If the stored theme is somehow invalid (bad
+    // legacy row, manual DB edit), fall back to the default theme rather than
+    // failing the public request.
+    let theme;
+    try {
+      theme = normalizeTheme(form.theme);
+    } catch {
+      theme = DEFAULT_THEME;
+    }
+
     const dto: PublicFormDTO = {
       slug: form.slug,
       title: form.title,
@@ -52,7 +64,7 @@ publicRouter.get(
       welcomeButtonLabel: form.welcomeButtonLabel,
       thankYouText: form.thankYouText,
       privacyNotice: form.privacyNotice,
-      theme: normalizeTheme(form.theme),
+      theme,
       questions,
     };
     res.json(dto);

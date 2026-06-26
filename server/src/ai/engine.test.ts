@@ -15,10 +15,14 @@ import type { AllowlistColumn } from '@orlanda/shared';
 // The mock fns must be created via vi.hoisted so they exist before the hoisted
 // vi.mock factories run. Each test programs createMock with a queue of
 // message responses, and searchBoardItemsByNameMock with the board's items.
-const { createMock, searchBoardItemsByNameMock } = vi.hoisted(() => ({
-  createMock: vi.fn(),
-  searchBoardItemsByNameMock: vi.fn(),
-}));
+const { createMock, searchBoardItemsByNameMock, usageUpsertMock, usageUpdateMock } = vi.hoisted(
+  () => ({
+    createMock: vi.fn(),
+    searchBoardItemsByNameMock: vi.fn(),
+    usageUpsertMock: vi.fn().mockResolvedValue({ key: 'ai-calls:test', count: 1 }),
+    usageUpdateMock: vi.fn().mockResolvedValue({ key: 'ai-calls:test', count: 0 }),
+  }),
+);
 
 vi.mock('@anthropic-ai/sdk', () => {
   class MockAnthropic {
@@ -31,8 +35,10 @@ vi.mock('@anthropic-ai/sdk', () => {
 vi.mock('../db/prisma', () => ({
   prisma: {
     usageCounter: {
-      // Always return a count well under any limit so the ceiling never trips.
-      upsert: vi.fn().mockResolvedValue({ key: 'ai-calls:test', count: 1 }),
+      // Default returns a count well under any limit so the ceiling never trips.
+      upsert: usageUpsertMock,
+      // Used by the daily-call refund path on a failed Anthropic call.
+      update: usageUpdateMock,
     },
   },
 }));
@@ -401,5 +407,60 @@ describe('runAiMapping — no link columns keep single forced emit (unchanged)',
     expect(searchBoardItemsByNameMock).not.toHaveBeenCalled();
 
     expect(res.columnValues).toEqual({ text_a: 'n', num_b: '5' });
+  });
+});
+
+describe('runAiMapping — daily ceiling refund on a failed Anthropic call (§16.1)', () => {
+  const allowlist: AllowlistColumn[] = [{ columnId: 'text_a', title: 'Notes', type: 'text' }];
+  const params = { aiPrompt: 'Map it.', allowlist, questions: [], answers: {} };
+
+  beforeEach(() => {
+    createMock.mockReset();
+    searchBoardItemsByNameMock.mockReset();
+    usageUpsertMock.mockReset().mockResolvedValue({ key: 'ai-calls:test', count: 1 });
+    usageUpdateMock.mockReset().mockResolvedValue({ key: 'ai-calls:test', count: 0 });
+  });
+
+  it('refunds (decrements) the reserved slot when messages.create rejects', async () => {
+    createMock.mockRejectedValue(new Error('socket hang up'));
+
+    const { runAiMapping } = await import('./engine');
+    await expect(runAiMapping(params)).rejects.toBeInstanceOf(AiError);
+
+    // Reserved exactly one slot before the call, then refunded it after the throw.
+    expect(usageUpsertMock).toHaveBeenCalledTimes(1);
+    expect(usageUpdateMock).toHaveBeenCalledTimes(1);
+    expect(usageUpdateMock.mock.calls[0][0]).toMatchObject({
+      data: { count: { decrement: 1 } },
+    });
+  });
+
+  it('does NOT refund when the daily ceiling is exceeded (no call was sent)', async () => {
+    // upsert returns a count over the limit → enforceDailyCeiling throws before
+    // any Anthropic call is made; there is nothing to refund.
+    usageUpsertMock.mockResolvedValue({ key: 'ai-calls:test', count: 1_000_000 });
+
+    const { runAiMapping } = await import('./engine');
+    await expect(runAiMapping(params)).rejects.toBeInstanceOf(AiError);
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(usageUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT refund when the call succeeds but returns no usable tool block', async () => {
+    // Both attempts return text only (no tool_use) → terminal "no usable tool
+    // call", but the calls SUCCEEDED and consumed quota → no refund.
+    const textOnly = {
+      id: 'm',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'I cannot.' }],
+      stop_reason: 'end_turn',
+    };
+    createMock.mockResolvedValue(textOnly);
+
+    const { runAiMapping } = await import('./engine');
+    await expect(runAiMapping(params)).rejects.toBeInstanceOf(AiError);
+
+    expect(usageUpdateMock).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,17 @@ import { sanitizeFilename, validateUpload } from '../files/validate';
 
 const FILE_FIELD_PREFIX = 'file__';
 
+// The client-supplied idempotency key (§14.1) MUST be a well-formed RFC-4122
+// UUID (any version 1-5, standard 8-4-4-4-12 layout with version/variant
+// nibbles). Validating it before any DB work stops malformed/abusive keys from
+// reaching the unique index or consuming the per-form cap.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidIdempotencyKey(key: unknown): key is string {
+  return typeof key === 'string' && UUID_RE.test(key);
+}
+
 interface ParsedFile {
   questionId: string;
   buffer: Buffer;
@@ -164,15 +175,20 @@ export async function getPublishedForm(slug: string): Promise<Form> {
  * same generic success regardless.
  */
 export async function handleSubmit(req: Request, form: Form): Promise<SubmitOutcome> {
+  // 1. Idempotency key (§14.1): must be present AND a well-formed UUID. Validate
+  //    BEFORE any DB work (cap counter, lookups, inserts) so a malformed key is
+  //    rejected with a 400 without touching the database.
+  const idempotencyKey =
+    typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '';
+  if (!idempotencyKey) throw badRequest('Missing idempotency key.');
+  if (!isValidIdempotencyKey(idempotencyKey)) throw badRequest('Invalid idempotency key.');
+
   // 2. Per-form daily cap — before any further work (§16.1).
   await enforceDailyCap(form, new Date());
 
   // 3. Parse parts.
   const files = groupFiles((req.files as Express.Multer.File[] | undefined) ?? []);
   const answersRaw = typeof req.body?.answers === 'string' ? req.body.answers : '';
-  const idempotencyKey =
-    typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '';
-  if (!idempotencyKey) throw badRequest('Missing idempotency key.');
 
   let answers: Record<string, unknown>;
   try {

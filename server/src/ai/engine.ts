@@ -163,13 +163,20 @@ function dayKey(now: Date): string {
   return now.toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
+// Counter key for today's AI-call reservation. Computed once per mapping so the
+// reservation and any refund target the exact same row (no midnight drift).
+function aiCallCounterKey(now: Date): string {
+  return `ai-calls:${dayKey(now)}`;
+}
+
 /**
  * Atomically increment today's AI-call counter and enforce the daily ceiling
  * (§16.1/§18.8). Uses an upsert + post-increment read; if the new count exceeds
- * env.AI_DAILY_CALL_LIMIT we throw terminal so the call is never sent.
+ * env.AI_DAILY_CALL_LIMIT we throw terminal so the call is never sent. The
+ * pre-send reservation is concurrency-safe (two racing requests cannot both slip
+ * past the boundary).
  */
-async function enforceDailyCeiling(now: Date): Promise<void> {
-  const key = `ai-calls:${dayKey(now)}`;
+async function enforceDailyCeiling(key: string): Promise<void> {
   const counter = await prisma.usageCounter.upsert({
     where: { key },
     create: { key, count: 1 },
@@ -177,6 +184,26 @@ async function enforceDailyCeiling(now: Date): Promise<void> {
   });
   if (counter.count > env.AI_DAILY_CALL_LIMIT) {
     throw new AiError('AI daily limit reached', true);
+  }
+}
+
+/**
+ * Refund a previously reserved daily-call slot (§16.1). Called ONLY when the
+ * Anthropic request itself fails (transport/SDK error) before producing a usable
+ * response — i.e. the reserved slot was never spent. Best-effort: a failed
+ * refund must never mask the original failure and never throws. We do NOT refund
+ * on guard/ceiling rejections (those reject before any call) nor on a successful
+ * call that merely returned an unusable tool block (that call consumed quota).
+ */
+async function refundDailyCeiling(key: string): Promise<void> {
+  try {
+    await prisma.usageCounter.update({
+      where: { key },
+      data: { count: { decrement: 1 } },
+    });
+  } catch {
+    // Swallow — the counter drifting up by one is preferable to masking the real
+    // Anthropic failure or crashing the worker.
   }
 }
 
@@ -384,8 +411,10 @@ export async function runAiMapping(params: {
     stableBlock,
   });
 
-  // 2) Daily call ceiling (atomic increment, §16.1/§18.8).
-  await enforceDailyCeiling(new Date());
+  // 2) Daily call ceiling (atomic increment, §16.1/§18.8). Compute the counter
+  //    key once so a refund on a failed call targets the same reserved slot.
+  const reservationKey = aiCallCounterKey(new Date());
+  await enforceDailyCeiling(reservationKey);
 
   const client = new Anthropic({
     apiKey: env.ANTHROPIC_API_KEY,
@@ -428,11 +457,11 @@ export async function runAiMapping(params: {
   // No link columns → keep the original single-call, forced-tool behavior EXACTLY
   // (no extra tool, no loop, no extra cost).
   if (!hasLinkColumns) {
-    return runForcedEmit({ client, system, userContent, params, finalize });
+    return runForcedEmit({ client, system, userContent, params, finalize, reservationKey });
   }
 
   // Link columns present → bounded multi-turn loop with both tools (§18).
-  return runLinkedLoop({ client, system, userContent, params, allowSet, finalize });
+  return runLinkedLoop({ client, system, userContent, params, allowSet, finalize, reservationKey });
 }
 
 interface LoopCtx {
@@ -447,6 +476,8 @@ interface LoopCtx {
     defaultItemName?: string;
   };
   finalize: (toolInput: AiToolInput, lastRaw: string) => AiMappingResult;
+  /** Counter key for the reserved daily-call slot, refunded if a call fails. */
+  reservationKey: string;
 }
 
 /**
@@ -454,7 +485,7 @@ interface LoopCtx {
  * single repair retry (§18.2). Unchanged from the pre-link engine.
  */
 async function runForcedEmit(ctx: LoopCtx): Promise<AiMappingResult> {
-  const { client, system, userContent, finalize } = ctx;
+  const { client, system, userContent, finalize, reservationKey } = ctx;
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userContent }];
 
   let lastRaw = '';
@@ -464,6 +495,7 @@ async function runForcedEmit(ctx: LoopCtx): Promise<AiMappingResult> {
       tools: [{ name: TOOL_NAME, description: TOOL_DESCRIPTION, input_schema: EMIT_MAPPING_SCHEMA }],
       tool_choice: { type: 'tool', name: TOOL_NAME },
       messages,
+      reservationKey,
     });
 
     lastRaw = JSON.stringify(msg.content);
@@ -486,7 +518,7 @@ async function runForcedEmit(ctx: LoopCtx): Promise<AiMappingResult> {
  * emit_mapping. A single repair retry still applies if the forced call fails.
  */
 async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise<AiMappingResult> {
-  const { client, system, userContent, allowSet, finalize } = ctx;
+  const { client, system, userContent, allowSet, finalize, reservationKey } = ctx;
   const tools: Anthropic.Tool[] = [
     { name: TOOL_NAME, description: TOOL_DESCRIPTION, input_schema: EMIT_MAPPING_SCHEMA },
     { name: SEARCH_TOOL_NAME, description: SEARCH_TOOL_DESCRIPTION, input_schema: SEARCH_LINKED_BOARD_SCHEMA },
@@ -506,6 +538,7 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
       tools,
       tool_choice: forceEmit ? { type: 'tool', name: TOOL_NAME } : { type: 'auto' },
       messages,
+      reservationKey,
     });
     lastRaw = JSON.stringify(msg.content);
 
@@ -580,6 +613,7 @@ async function callAnthropic(
     tools: Anthropic.Tool[];
     tool_choice: Anthropic.MessageCreateParams['tool_choice'];
     messages: Anthropic.MessageParam[];
+    reservationKey: string;
   },
 ): Promise<Anthropic.Message> {
   try {
@@ -593,9 +627,12 @@ async function callAnthropic(
       messages: args.messages,
     });
   } catch (err) {
-    // SDK/transport error. Never leak the key; surface a terminal failure (a
+    // SDK/transport error: the reserved daily-call slot was never spent on a
+    // usable response, so refund it (§16.1) before failing — a transient outage
+    // must not permanently consume quota. Then surface a terminal failure (a
     // same-call retry would not change a malformed/forbidden request, and the
     // worker layer handles broader retries via submission status).
+    await refundDailyCeiling(args.reservationKey);
     throw new AiError(
       `Anthropic request failed: ${err instanceof Error ? err.message : 'unknown error'}`,
       true,

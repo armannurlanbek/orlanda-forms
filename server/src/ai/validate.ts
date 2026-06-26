@@ -48,10 +48,14 @@ export function validateAndConvertMapping(
       continue;
     }
     // The model must emit human values, not Monday wire JSON (§18.1). A
-    // wire-shaped object (e.g. { label } / { date }) for a scalar column is a
-    // contract violation → drop.
-    if (isLikelyWireShape(col.type, rawValue)) {
-      dropped.push({ columnId, reason: 'model emitted Monday wire JSON instead of a human value' });
+    // wire-shaped object/array (e.g. { label } / { date } / { item_ids }) for a
+    // SCALAR column is a contract violation → drop, so a hallucinated wire shape
+    // can never reach the formatter.
+    if (isWireShapeForScalar(col.type, rawValue)) {
+      dropped.push({
+        columnId,
+        reason: 'model emitted a wire-shaped object/array for a scalar column instead of a human value',
+      });
       continue;
     }
     const res = formatColumnValue(col.type, rawValue, { allowedLabels: col.allowedLabels });
@@ -66,12 +70,27 @@ export function validateAndConvertMapping(
   return { itemName, columnValues, dropped, reasoning };
 }
 
-// Heuristic: detect the model returning wire JSON for a scalar column type.
-function isLikelyWireShape(columnType: string, value: unknown): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const keys = Object.keys(value as object);
-  if (columnType === 'status' && keys.includes('label')) return true;
-  if (columnType === 'numbers') return true; // numbers must be a JSON number, not an object
-  if (columnType === 'text' || columnType === 'long_text') return true; // must be a string
-  return false;
+// Column types whose LEGITIMATE value is a container (object/array): dropdown
+// takes an array of labels (multi-value); board_relation/connect_boards take an
+// array of item ids; timeline takes a { from, to } object. EVERY other column is
+// SCALAR — its human value must be a primitive (string/number/boolean).
+const CONTAINER_COLUMN_TYPES = new Set<string>([
+  'dropdown',
+  'board_relation',
+  'connect_boards',
+  'timeline',
+]);
+
+/**
+ * Explicit, total rejection of wire-shaped values on scalar columns. The model
+ * must emit HUMAN values, not Monday wire JSON (§18.1): a scalar column (text,
+ * long_text, numbers, status, date, email, link, phone, checkbox) may ONLY
+ * receive a primitive, so any object or array is a contract violation. This is a
+ * default-deny check — anything that is not a known container type rejects
+ * objects/arrays — so a hallucinated wire shape like {"item_ids":[999]},
+ * {"label":"x"} or {"date":"..."} can never slip through to the formatter.
+ */
+function isWireShapeForScalar(columnType: string, value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return false; // primitive/null — fine
+  return !CONTAINER_COLUMN_TYPES.has(columnType); // object/array on a scalar column → reject
 }
