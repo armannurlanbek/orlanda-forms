@@ -1,0 +1,13 @@
+{
+  "_note": "Sample POST /api/public/forms/:slug/submit. In a real multipart request, 'answers' is a text part (this JSON), 'idempotencyKey' is a text part, and each file is a part named file__<questionId>. The questionIds below are placeholders the test wiring maps to a seeded form's question ids. The attachment file is fixtures/files/test.txt (<100 KB).",
+  "idempotencyKey": "11111111-1111-1111-1111-111111111111",
+  "answers": {
+    "q_text": { "type": "text", "value": "Cracked render on north elevation" },
+    "q_long": { "type": "long_text", "value": "Visible cracking approx 1.2m.\nRecommend further inspection." },
+    "q_num": { "type": "number", "value": 42 },
+    "q_single": { "type": "single_select", "value": "Done" },
+    "q_multi": { "type": "multi_select", "value": ["Plumbing", "Electrical"] },
+    "q_file": { "type": "attachment", "attachmentIds": [] }
+  },
+  "files": [{ "field": "file__q_file", "path": "files/test.txt" }]
+}

@@ -1,0 +1,41 @@
+# Local / standalone deployment: app + bundled Postgres (the spec's §10 stack).
+# For the Orlanda failover cluster use deploy/docker-compose.cluster.yml instead
+# (shared HA Postgres via the db-router, host networking) — see deploy/CLUSTER_DEPLOY.md.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: orlanda
+      POSTGRES_PASSWORD: orlanda
+      POSTGRES_DB: orlanda_forms
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U orlanda -d orlanda_forms']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 'development' so the session cookie is not flagged Secure (it would be
+      # dropped over plain http://localhost). Use 'production' only behind HTTPS.
+      NODE_ENV: development
+      PORT: '8001'
+      # Override the .env DATABASE_URL to point at the compose Postgres service.
+      DATABASE_URL: postgresql://orlanda:orlanda@postgres:5432/orlanda_forms?schema=public
+      # Single-container: the API serves the built client, so APP_URL is its own origin.
+      APP_URL: http://localhost:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '8001:8001'
+
+volumes:
+  pgdata:

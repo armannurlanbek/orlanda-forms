@@ -1,0 +1,2 @@
+Orlanda Forms — sample attachment fixture.
+This small text file exercises the attachment upload path (§13) in tests.

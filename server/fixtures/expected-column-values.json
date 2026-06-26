@@ -1,0 +1,15 @@
+{
+  "_note": "Golden column_values for the Direct formatter (§12). One entry per supported column type. The 'file' column (files_mkvb) is intentionally ABSENT — files are attached via the assets flow AFTER the item exists (§12.2). This is the plain object that gets JSON.stringify()'d into the column_values GraphQL variable.",
+  "columnValues": {
+    "text_mkv1": "Cracked render on north elevation",
+    "long_text_mkv2": "Visible cracking approx 1.2m.\nRecommend further inspection.",
+    "numbers_mkv3": "42",
+    "status_mkv4": { "label": "Done" },
+    "dropdown_mkv5": { "labels": ["Plumbing", "Electrical"] },
+    "date_mkv6": { "date": "2026-06-25" },
+    "email_mkv7": { "email": "surveyor@example.com", "text": "surveyor@example.com" },
+    "link_mkv8": { "url": "https://example.com", "text": "https://example.com" },
+    "phone_mkv9": { "phone": "15551234567", "countryShortName": "US" },
+    "checkbox_mkva": { "checked": "true" }
+  }
+}

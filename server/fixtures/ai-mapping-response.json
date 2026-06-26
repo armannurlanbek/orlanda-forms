@@ -1,0 +1,37 @@
+{
+  "_note": "Representative AI path (§18). The model emits HUMAN values via the forced 'emit_mapping' tool (NOT Monday wire JSON). 'allowlist' is the writable-column allowlist the builder configured. The pipeline must: (1) drop any columnId not in the allowlist, (2) drop values failing the §12 per-type/allowed-label check, (3) convert surviving human values to wire shapes. 'unknown_col_xyz' must be dropped; 'status_mkv4' with label 'Imaginary' must be dropped (label not in allowedLabels).",
+  "allowlist": [
+    { "columnId": "text_mkv1", "title": "Notes", "type": "text" },
+    { "columnId": "numbers_mkv3", "title": "Quantity", "type": "numbers" },
+    { "columnId": "status_mkv4", "title": "Status", "type": "status", "allowedLabels": ["New", "Working on it", "Done", "Stuck"] },
+    { "columnId": "dropdown_mkv5", "title": "Categories", "type": "dropdown", "allowedLabels": ["Plumbing", "Electrical", "Structural"] },
+    { "columnId": "date_mkv6", "title": "Due Date", "type": "date" }
+  ],
+  "toolInput": {
+    "itemName": "Acme Co — Site Survey",
+    "columnValues": {
+      "text_mkv1": "Cracked render on north elevation",
+      "numbers_mkv3": 42,
+      "status_mkv4": "Done",
+      "dropdown_mkv5": ["Plumbing", "Electrical"],
+      "date_mkv6": "2026-06-25",
+      "unknown_col_xyz": "this column is not in the allowlist",
+      "status_should_drop": "Imaginary"
+    },
+    "reasoning": "Mapped the survey answers to the matching board columns."
+  },
+  "expected": {
+    "itemName": "Acme Co — Site Survey",
+    "columnValues": {
+      "text_mkv1": "Cracked render on north elevation",
+      "numbers_mkv3": "42",
+      "status_mkv4": { "label": "Done" },
+      "dropdown_mkv5": { "labels": ["Plumbing", "Electrical"] },
+      "date_mkv6": { "date": "2026-06-25" }
+    },
+    "dropped": [
+      { "columnId": "unknown_col_xyz", "reason": "column not in allowlist" },
+      { "columnId": "status_should_drop", "reason": "column not in allowlist" }
+    ]
+  }
+}

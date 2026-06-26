@@ -1,0 +1,210 @@
+// Orlanda Forms — Prisma schema (§11, with design decisions applied).
+// - Attachment bytes live in Postgres (bytea) so they survive cluster failover.
+// - Builders are org-wide-trusted (no per-form scoping column); object-level
+//   checks are enforced in code. Admin manages users + data-subject deletion.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  builder
+}
+
+enum FormStatus {
+  draft
+  published
+}
+
+enum MappingMode {
+  direct
+  ai
+}
+
+enum QuestionType {
+  text
+  long_text
+  number
+  single_select
+  multi_select
+  attachment
+}
+
+// Progress-bearing status so retry resumes at the exact failed step (§11.3/§14).
+enum SubmissionStatus {
+  received // row + all attachment bytes persisted; nothing sent to Monday yet
+  item_created // create_item succeeded; mondayItemId persisted
+  files_pending // item exists, column_values written, files not all uploaded
+  mapped // fully complete: item + all columns + all files
+  partial // item exists but some answers/columns/files intentionally dropped
+  failed // hard failure before/at create_item; never lost
+}
+
+enum AttachmentStatus {
+  stored // bytes persisted, not yet sent to Monday
+  uploading // add_file_to_column in progress
+  uploaded // present on the Monday item
+  failed // upload errored (retryable)
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(builder)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  forms Form[]
+}
+
+model Form {
+  id                 String      @id @default(uuid())
+  slug               String      @unique
+  title              String
+  description        String?     @db.Text
+  status             FormStatus  @default(draft)
+  boardId            String?
+  mappingMode        MappingMode @default(direct)
+  aiPrompt           String?     @db.Text
+  // AI mode only: the columns the builder explicitly allows the AI to write to
+  // (§18.3 allowlist). Array of { columnId, title, type, allowedLabels? }.
+  aiAllowedColumns   Json?
+  welcomeText        String?     @db.Text
+  welcomeButtonLabel String      @default("Start")
+  thankYouText       String?     @db.Text
+  // { logoUrl?, colors: { primary, onPrimary, bg, text, focus } } — validated (§16.8).
+  theme              Json?
+  dailySubmissionCap Int         @default(200)
+  privacyNotice      String?     @db.Text
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  deletedAt DateTime? // soft delete (§15.3.5)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  questions   Question[]
+  submissions Submission[]
+
+  @@index([createdById])
+  @@index([status])
+}
+
+model Question {
+  id       String       @id @default(uuid())
+  formId   String
+  form     Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  order    Int
+  type     QuestionType
+  label    String
+  helpText String?      @db.Text
+  required Boolean      @default(false)
+  // For selects: { options: string[], minSelections?, maxSelections? }.
+  // For number: { min?, max?, step? }. For text/long_text: { maxLength? }.
+  options  Json?
+  // Direct mode only: { columnId, columnType, ...perTypeExtras } (§12.3).
+  directMapping Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([formId, order])
+}
+
+model Submission {
+  id             String           @id @default(uuid())
+  formId         String
+  form           Form             @relation(fields: [formId], references: [id])
+  idempotencyKey String           @unique // dedupes double-submit & safe retry (§14.1)
+  answers        Json
+  status         SubmissionStatus @default(received)
+  mondayItemId   String? // set ONCE immediately after create_item (§11.3/§14.2)
+  aiReasoning    String?          @db.Text // internal only
+  errorMessage   String?          @db.Text
+  droppedColumns Json? // columnIds the AI returned but were dropped (internal)
+  clientIp       String?
+
+  // Worker / resumability bookkeeping (§14).
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime? // backoff for retryable Monday errors (§14.4)
+  lockedAt      DateTime? // worker claim to avoid double-processing
+
+  // Auditability (§18.9) — internal only, PII-redacted on store.
+  aiPromptRendered String? @db.Text
+  aiRawResponse    String? @db.Text
+
+  attachments Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([formId, createdAt])
+  @@index([status])
+  @@index([status, nextAttemptAt])
+}
+
+model Attachment {
+  id                String           @id @default(uuid())
+  submissionId      String
+  submission        Submission       @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  questionId        String
+  originalFilename  String
+  sanitizedFilename String
+  mimeType          String
+  sizeBytes         Int
+  storageKey        String? // legacy/optional path key; bytes is the source of truth
+  bytes             Bytes // file content (Postgres bytea) — replicates across failover
+  status            AttachmentStatus @default(stored)
+  mondayAssetId     String?
+  uploadedToMonday  Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+
+  @@index([submissionId])
+  @@index([submissionId, questionId])
+}
+
+model BoardSchemaCache {
+  boardId   String   @id
+  schema    Json
+  fetchedAt DateTime @default(now())
+}
+
+// Server-side logout/revocation (§16.3): logout writes the token's jti here.
+model AuthTokenDenylist {
+  jti       String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// Builder-uploaded assets (logos). Bytes in Postgres so they replicate across
+// failover, like attachments. Served by an app route as the correct image type
+// with X-Content-Type-Options: nosniff (raster only; SVG rejected — §16.8).
+model Asset {
+  id          String   @id @default(uuid())
+  kind        String // 'logo'
+  mimeType    String
+  sizeBytes   Int
+  bytes       Bytes
+  createdById String?
+  createdAt   DateTime @default(now())
+}
+
+// Persistent daily counters for per-form caps and the AI daily-call ceiling
+// (§16.1). Key embeds the day, e.g. "form-daily:<formId>:2026-06-25" or
+// "ai-calls:2026-06-25". Survives restarts; old rows swept by the purge job.
+model UsageCounter {
+  key       String   @id
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}

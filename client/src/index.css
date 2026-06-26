@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Default theme tokens (Orlanda). Per-form values override these on the public
+   form root via inline CSS variables (§17.8). */
+:root {
+  --color-primary: #1f4e79;
+  --color-on-primary: #ffffff;
+  --color-bg: #f7f9fc;
+  --color-text: #1a2330;
+  --color-focus: #2b6cb0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus ring for keyboard users (§17.7). */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion globally (§17.7/§17.8). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

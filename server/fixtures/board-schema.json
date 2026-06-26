@@ -1,0 +1,28 @@
+{
+  "data": {
+    "boards": [
+      {
+        "id": "1234567890",
+        "name": "Site Surveys (FIXTURE — replace with a real board capture)",
+        "columns": [
+          { "id": "name", "title": "Name", "type": "name", "settings_str": "{}" },
+          { "id": "text_mkv1", "title": "Notes", "type": "text", "settings_str": "{}" },
+          { "id": "long_text_mkv2", "title": "Details", "type": "long_text", "settings_str": "{}" },
+          { "id": "numbers_mkv3", "title": "Quantity", "type": "numbers", "settings_str": "{\"unit\":{\"symbol\":\"\",\"custom_unit\":null,\"direction\":\"right\"}}" },
+          { "id": "status_mkv4", "title": "Status", "type": "status", "settings_str": "{\"labels\":{\"0\":\"New\",\"1\":\"Working on it\",\"2\":\"Done\",\"5\":\"Stuck\"}}" },
+          { "id": "dropdown_mkv5", "title": "Categories", "type": "dropdown", "settings_str": "{\"labels\":[{\"id\":1,\"name\":\"Plumbing\"},{\"id\":2,\"name\":\"Electrical\"},{\"id\":3,\"name\":\"Structural\"}]}" },
+          { "id": "date_mkv6", "title": "Due Date", "type": "date", "settings_str": "{}" },
+          { "id": "email_mkv7", "title": "Contact Email", "type": "email", "settings_str": "{}" },
+          { "id": "link_mkv8", "title": "Website", "type": "link", "settings_str": "{}" },
+          { "id": "phone_mkv9", "title": "Phone", "type": "phone", "settings_str": "{}" },
+          { "id": "checkbox_mkva", "title": "Confirmed", "type": "checkbox", "settings_str": "{}" },
+          { "id": "files_mkvb", "title": "Attachments", "type": "file", "settings_str": "{}" }
+        ],
+        "groups": [
+          { "id": "topics", "title": "New Surveys" },
+          { "id": "group_done", "title": "Completed" }
+        ]
+      }
+    ]
+  }
+}

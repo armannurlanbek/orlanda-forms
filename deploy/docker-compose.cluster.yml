@@ -1,0 +1,25 @@
+# Orlanda failover-cluster deployment (see deploy/CLUSTER_DEPLOY.md).
+#
+# Per the infrastructure design (server_info/): NO bundled Postgres — the app
+# uses the shared HA cluster via the local db-router at 127.0.0.1:6432, and runs
+# in host network mode (avoids the Docker NAT-loopback problem, Runbook §8-G).
+# Public traffic arrives via the existing Cloudflare tunnel + load balancer; no
+# inbound ports are opened and there is no nginx/certbot.
+#
+# Put DB_PASSWORD (and the app secrets) in /opt/orlanda-forms/.env on BOTH
+# servers, identical. The DATABASE_URL is assembled here from ${DB_PASSWORD}
+# (Compose interpolates the environment block — see Playbook §5).
+
+services:
+  app:
+    build: .
+    container_name: orlanda-forms
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # Pick a free host port (Playbook §0): 5432/6432/8000/23267 are taken.
+      PORT: '8001'
+      DATABASE_URL: postgresql://orlandaforms:${DB_PASSWORD}@127.0.0.1:6432/db_orlandaforms
+      APP_URL: https://forms.n8norlanda.com

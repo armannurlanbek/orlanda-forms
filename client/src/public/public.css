@@ -1,0 +1,28 @@
+/* Public-form screen transition (§17.8). Owned by the public bundle and imported
+   from PublicFormPage. Kept in a stylesheet (not inline style) so a strict CSP
+   that forbids inline styles is satisfied. The global prefers-reduced-motion
+   rule in index.css already neutralizes this animation's duration; we add an
+   explicit guard here too so the screen is fully visible with no motion. */
+
+.public-screen-in {
+  animation: public-screen-in 240ms ease-out both;
+}
+
+@keyframes public-screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-screen-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
