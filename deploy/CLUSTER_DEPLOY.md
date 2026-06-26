@@ -66,9 +66,14 @@ hostssl db_orlandaforms  orlandaforms  193.70.47.219/32   scram-sha-256
 Then on each: `sudo systemctl reload pgautofailover`.
 
 ## 4. Get the code onto BOTH servers (Doc 4 §4)
+Repo: `https://github.com/armannurlanbek/orlanda-forms` (**private**; default
+branch `main` carries the production-ready code). A private clone needs GitHub
+auth — use a fine-grained PAT with read access, or a per-server read-only deploy
+key. On **each** server:
 ```
 cd /opt
-sudo git clone <YOUR_REPO_URL> orlanda-forms
+sudo git clone https://github.com/armannurlanbek/orlanda-forms.git orlanda-forms
+# when prompted: Username = armannurlanbek, Password = <your GitHub PAT>
 cd orlanda-forms
 ```
 This app ships **no bundled Postgres** — it already targets the cluster, so there
