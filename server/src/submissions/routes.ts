@@ -37,3 +37,19 @@ submissionsRouter.post(
     res.json({ ok: true, status });
   }),
 );
+
+// DELETE /api/submissions/:id — permanently remove a submission and its
+// attachments (Attachment cascades via onDelete: Cascade). This removes the
+// LOCAL record only; any Monday item already created is left untouched. Builders
+// are org-wide-trusted; a missing submission returns 404 (no enumeration).
+submissionsRouter.delete(
+  '/:id',
+  csrfProtect,
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id);
+    const sub = await prisma.submission.findUnique({ where: { id }, select: { id: true } });
+    if (!sub) throw notFound('Submission not found.');
+    await prisma.submission.delete({ where: { id } });
+    res.json({ ok: true });
+  }),
+);

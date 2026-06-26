@@ -10,7 +10,7 @@ import type { FormDetail, SubmissionRow, SubmissionStatus } from '@orlanda/share
 import { ApiError, api } from '../lib/api';
 import { AppHeader } from './components/AppHeader';
 import { Badge, Button, Card, Spinner } from './components/ui';
-import { ArrowLeftIcon, ExternalLinkIcon, RefreshIcon } from './components/icons';
+import { ArrowLeftIcon, ExternalLinkIcon, RefreshIcon, TrashIcon } from './components/icons';
 import { ToastProvider, useToast } from './components/Toast';
 
 const STATUS_TONE: Record<SubmissionStatus, 'green' | 'amber' | 'red' | 'slate' | 'blue'> = {
@@ -37,12 +37,17 @@ function SubmissionRowItem({
   row,
   onRetry,
   retrying,
+  onDelete,
+  deleting,
 }: {
   row: SubmissionRow;
   onRetry: (id: string) => void;
   retrying: boolean;
+  onDelete: (id: string) => void;
+  deleting: boolean;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const canRetry = row.status === 'failed' || row.status === 'partial';
   return (
     <>
@@ -82,6 +87,26 @@ function SubmissionRowItem({
                 Retry
               </Button>
             ) : null}
+            {confirmDelete ? (
+              <>
+                <Button size="sm" variant="danger" disabled={deleting} onClick={() => onDelete(row.id)}>
+                  {deleting ? <Spinner /> : null}
+                  Confirm
+                </Button>
+                <Button size="sm" variant="ghost" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Delete submission"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <TrashIcon size={15} />
+              </Button>
+            )}
           </div>
         </td>
       </tr>
@@ -148,6 +173,7 @@ function SubmissionsInner(): JSX.Element {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const formQuery = useQuery({
     queryKey: ['form', id],
@@ -170,6 +196,17 @@ function SubmissionsInner(): JSX.Element {
     },
     onError: (err) => toast(err instanceof ApiError ? err.message : 'Retry failed.', 'error'),
     onSettled: () => setRetryingId(null),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (submissionId: string) => api.del(`/api/submissions/${submissionId}`),
+    onMutate: (submissionId: string) => setDeletingId(submissionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['submissions', id] });
+      toast('Submission deleted.', 'success');
+    },
+    onError: (err) => toast(err instanceof ApiError ? err.message : 'Delete failed.', 'error'),
+    onSettled: () => setDeletingId(null),
   });
 
   return (
@@ -227,6 +264,8 @@ function SubmissionsInner(): JSX.Element {
                       row={row}
                       retrying={retryingId === row.id}
                       onRetry={(sid) => retryMutation.mutate(sid)}
+                      deleting={deletingId === row.id}
+                      onDelete={(sid) => deleteMutation.mutate(sid)}
                     />
                   ))}
                 </tbody>

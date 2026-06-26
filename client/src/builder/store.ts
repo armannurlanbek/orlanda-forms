@@ -34,6 +34,8 @@ export interface DraftQuestion {
 
 export interface BuilderFormState {
   title: string;
+  /** Editable public-link slug (the `/{slug}` of the public URL). */
+  slug: string;
   description: string;
   boardId: string | null;
   mappingMode: MappingMode;
@@ -101,6 +103,7 @@ function defaultLabelFor(type: QuestionType): string {
 
 const EMPTY_FORM: BuilderFormState = {
   title: '',
+  slug: '',
   description: '',
   boardId: null,
   mappingMode: 'direct',
@@ -127,6 +130,7 @@ function parseDirectMappingLink(link: unknown): { link?: { boardId: string } } {
 function detailToState(detail: FormDetail): { form: BuilderFormState; questions: DraftQuestion[] } {
   const form: BuilderFormState = {
     title: detail.title ?? '',
+    slug: detail.slug ?? '',
     description: detail.description ?? '',
     boardId: detail.boardId ?? null,
     mappingMode: detail.mappingMode,
@@ -248,6 +252,9 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
     const { form, questions } = get();
     return {
       title: form.title,
+      // Only send the slug when set; the server keeps the current slug otherwise
+      // and validates + enforces uniqueness when it actually changes.
+      slug: form.slug || undefined,
       description: form.description || null,
       boardId: form.boardId,
       mappingMode: form.mappingMode,

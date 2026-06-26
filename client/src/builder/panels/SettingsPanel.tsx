@@ -2,7 +2,7 @@
 // Direct/AI mode toggle and the matching mapping UI, welcome/thank-you/privacy
 // content, theme colors (with AA warnings), logo upload, and the daily cap.
 import type { MappingMode, Theme } from '@orlanda/shared';
-import { meetsAA } from '@orlanda/shared';
+import { meetsAA, slugError } from '@orlanda/shared';
 import { useBuilderStore } from '../store';
 import { useBoardSchema, useBoards, useRefreshBoardSchema } from '../hooks/useMonday';
 import { DirectMapping } from './DirectMapping';
@@ -44,9 +44,13 @@ function ModeToggle({ mode, onChange }: { mode: MappingMode; onChange: (m: Mappi
 
 export function SettingsPanel(): JSX.Element {
   const form = useBuilderStore((s) => s.form);
+  const status = useBuilderStore((s) => s.status);
   const setField = useBuilderStore((s) => s.setField);
   const setMappingMode = useBuilderStore((s) => s.setMappingMode);
   const setTheme = useBuilderStore((s) => s.setTheme);
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const slugErr = form.slug ? slugError(form.slug) : null;
 
   const boardsQuery = useBoards();
   const schemaQuery = useBoardSchema(form.boardId);
@@ -62,6 +66,34 @@ export function SettingsPanel(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      <Section title="Public link">
+        <Label htmlFor="form-slug">Custom link</Label>
+        <div className="flex items-center gap-1">
+          <span className="shrink-0 text-sm text-slate-400">{origin}/</span>
+          <Input
+            id="form-slug"
+            value={form.slug}
+            placeholder="my-form"
+            aria-invalid={slugErr ? true : undefined}
+            onChange={(e) => setField('slug', e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+          />
+        </div>
+        {slugErr ? (
+          <p role="alert" className="mt-1 text-xs text-red-600">
+            {slugErr}
+          </p>
+        ) : (
+          <p className="mt-1 break-all text-xs text-slate-500">
+            Public URL: {origin}/{form.slug || '…'}
+          </p>
+        )}
+        {status === 'published' ? (
+          <p className="mt-1 text-xs text-amber-700">
+            Changing the link retires the current published URL — old links will stop working.
+          </p>
+        ) : null}
+      </Section>
+
       <Section title="Target board">
         <Label htmlFor="board-select">Monday board</Label>
         <Select

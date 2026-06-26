@@ -78,6 +78,7 @@ const allowlistColumnSchema = z
 const saveFormInputSchema = z
   .object({
     title: z.string().min(1, 'Title is required.'),
+    slug: z.string().optional(),
     description: z.string().nullable().optional(),
     boardId: z.string().nullable().optional(),
     mappingMode: z.enum(['direct', 'ai']),

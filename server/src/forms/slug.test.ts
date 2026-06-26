@@ -28,6 +28,7 @@ vi.mock('../db/prisma', () => ({
 }));
 
 import { generateUniqueSlug, isReserved, nextCandidate, slugify } from './slug';
+import { slugError } from '@orlanda/shared';
 
 beforeEach(() => {
   slugStore.clear();
@@ -101,5 +102,31 @@ describe('generateUniqueSlug', () => {
   it('skips reserved candidates', async () => {
     // "api" is reserved, so the base must be suffixed.
     expect(await generateUniqueSlug('API')).toBe('api-2');
+  });
+});
+
+describe('slugError (shared validator for custom links)', () => {
+  it('accepts valid kebab slugs', () => {
+    expect(slugError('my-form')).toBeNull();
+    expect(slugError('q4-2026-survey')).toBeNull();
+    expect(slugError('abc')).toBeNull();
+  });
+
+  it('rejects too-short / too-long', () => {
+    expect(slugError('ab')).toMatch(/characters/);
+    expect(slugError('a'.repeat(61))).toMatch(/characters/);
+  });
+
+  it('rejects spaces, uppercase, and bad hyphenation', () => {
+    expect(slugError('My Form')).toMatch(/lowercase/);
+    expect(slugError('MyForm')).toMatch(/lowercase/);
+    expect(slugError('-lead')).toMatch(/lowercase/);
+    expect(slugError('lead-')).toMatch(/lowercase/);
+    expect(slugError('a--b')).toMatch(/lowercase/);
+  });
+
+  it('rejects reserved paths', () => {
+    expect(slugError('api')).toMatch(/reserved/);
+    expect(slugError('admin')).toMatch(/reserved/);
   });
 });

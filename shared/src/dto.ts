@@ -95,6 +95,9 @@ export interface FormDetail {
 // derives `order` from array index. Do NOT send a separate order field.
 export interface SaveFormInput {
   title: string;
+  /** Optional custom public link (slug). When present and changed, the server
+   *  validates + enforces global uniqueness. Omit to keep the current slug. */
+  slug?: string;
   description?: string | null;
   boardId?: string | null;
   mappingMode: MappingMode;
@@ -157,3 +160,25 @@ export const RESERVED_SLUGS = [
   'health',
   'healthz',
 ];
+
+export const SLUG_MIN_LENGTH = 3;
+export const SLUG_MAX_LENGTH = 60;
+
+/**
+ * Validate a custom public-link slug. Returns an error message, or null when
+ * valid. Single source of truth shared by the builder (live feedback) and the
+ * server (authoritative). Rules: lowercase a–z/0–9 and single hyphens, no
+ * leading/trailing/double hyphens, length bounds, and not a reserved path.
+ */
+export function slugError(slug: string): string | null {
+  if (slug.length < SLUG_MIN_LENGTH || slug.length > SLUG_MAX_LENGTH) {
+    return `Link must be ${SLUG_MIN_LENGTH}–${SLUG_MAX_LENGTH} characters.`;
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return 'Use lowercase letters, numbers and single hyphens only (no spaces).';
+  }
+  if ((RESERVED_SLUGS as readonly string[]).includes(slug)) {
+    return 'That link is reserved — choose another.';
+  }
+  return null;
+}

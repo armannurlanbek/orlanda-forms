@@ -13,7 +13,7 @@ import type {
   SaveFormInput,
   SubmissionRow,
 } from '@orlanda/shared';
-import { DEFAULT_THEME, normalizeTheme } from '@orlanda/shared';
+import { DEFAULT_THEME, normalizeTheme, slugError } from '@orlanda/shared';
 import { Prisma } from '@prisma/client';
 import type { Form, Question, Submission, Attachment } from '@prisma/client';
 import { prisma } from '../db/prisma';
@@ -174,8 +174,17 @@ export async function saveForm(id: string, body: unknown): Promise<FormDetail> {
     throw badRequest((err as Error).message || 'Invalid theme.');
   }
 
-  // Slug is immutable once published (§15.3.3); drafts never auto-rename here
-  // either — the slug is owned by create/publish, not the title on save.
+  // Custom public link: the builder may rename the slug. Validated + globally
+  // unique here (overrides the old "immutable once published" rule — changing a
+  // published form's slug intentionally retires the old URL; the builder warns).
+  let slugUpdate: { slug?: string } = {};
+  if (typeof input.slug === 'string' && input.slug.trim().toLowerCase() !== form.slug) {
+    const candidate = input.slug.trim().toLowerCase();
+    const err = slugError(candidate);
+    if (err) throw badRequest(err, { slug: err });
+    slugUpdate = { slug: candidate };
+  }
+
   const existing = await prisma.question.findMany({
     where: { formId: id },
     select: { id: true },
@@ -186,12 +195,14 @@ export async function saveForm(id: string, body: unknown): Promise<FormDetail> {
   // Questions whose id is absent from the incoming array are deleted (§17.1).
   const toDelete = [...existingIds].filter((qid) => !keepIds.has(qid));
 
-  await prisma.$transaction(async (tx) => {
-    await tx.form.update({
-      where: { id },
-      data: {
-        title: input.title,
-        description: input.description ?? null,
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.form.update({
+        where: { id },
+        data: {
+          ...slugUpdate,
+          title: input.title,
+          description: input.description ?? null,
         boardId: input.boardId ?? null,
         mappingMode: input.mappingMode,
         aiPrompt: input.aiPrompt ?? null,
@@ -237,7 +248,14 @@ export async function saveForm(id: string, body: unknown): Promise<FormDetail> {
         await tx.question.create({ data: { ...data, formId: id } });
       }
     }
-  });
+    });
+  } catch (err) {
+    // Slug raced another form between validation and commit — surface cleanly.
+    if (isUniqueSlugConflict(err)) {
+      throw badRequest('That link is already taken.', { slug: 'That link is already taken.' });
+    }
+    throw err;
+  }
 
   void form;
   return getFormDetail(id);
