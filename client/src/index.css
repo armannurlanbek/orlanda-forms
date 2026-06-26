@@ -3,13 +3,15 @@
 @tailwind utilities;
 
 /* Default theme tokens (Orlanda). Per-form values override these on the public
-   form root via inline CSS variables (§17.8). */
+   form root via inline CSS variables (§17.8). The builder/admin chrome never
+   sets these inline, so its focus ring resolves to the indigo accent below;
+   the public form always overrides --color-focus from its own theme. */
 :root {
   --color-primary: #1f4e79;
   --color-on-primary: #ffffff;
   --color-bg: #f7f9fc;
   --color-text: #1a2330;
-  --color-focus: #2b6cb0;
+  --color-focus: #4f46e5; /* indigo accent — builder focus ring */
 }
 
 html,
@@ -20,9 +22,10 @@ body,
 
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Visible focus ring for keyboard users (§17.7). */
