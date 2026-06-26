@@ -90,8 +90,13 @@ export function AiMapping({ schema }: { schema: MondayBoardSchema | undefined })
               }
               return (
                 <div key={c.id} className="rounded px-1.5 py-1 text-sm hover:bg-slate-50">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={allowedIds.has(c.id)} onChange={() => toggle(c.id)} />
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-accent"
+                      checked={allowedIds.has(c.id)}
+                      onChange={() => toggle(c.id)}
+                    />
                     <span className="font-medium text-slate-800">{c.title}</span>
                     <span className="text-xs text-slate-400">({c.type})</span>
                   </label>
