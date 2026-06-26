@@ -13,8 +13,8 @@ client/dist/
 server/dist/
 shared/dist/
 prisma/*.db
-data/
-uploads/
+/data/
+/uploads/
 *.local
 .idea/
 .vscode/
