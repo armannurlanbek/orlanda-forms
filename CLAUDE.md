@@ -138,6 +138,20 @@ mapping mode, AI prompt, AI reasoning, and internal status are never sent to the
 public client. React Query for data, TailwindCSS for styling. No
 `dangerouslySetInnerHTML`; all client-supplied text rendered as text.
 
+**Design system (builder chrome):** a fixed **indigo `accent`** palette
+(`tailwind.config.js` → `colors.accent`) drives primary actions, focus rings,
+active states, and gradient touches — this is distinct from the public form's
+per-form `brand.*` CSS-vars. Typeface is **Inter, self-hosted** via
+`@fontsource/inter` (imported in `main.tsx`; CSP-safe, no CDN). Tailwind has
+`future.hoverOnlyWhenSupported` so `hover:` styles never stick after a tap on
+touch devices. Shared primitives live in `builder/components/ui.tsx`
+(`Button` variants incl. `success`, `IconButton`, `Input/Select/Textarea` with
+accent focus, `Badge`, `Card`, and an accessible `Modal` with Escape +
+focus-trap). Use the inline SVG set in `builder/components/icons.tsx` — never
+emoji — for icons. The global keyboard focus ring is `:focus-visible` in
+`index.css` (indigo for the builder; the public form overrides `--color-focus`
+per theme).
+
 ### Server wiring
 `server/src/app.ts` builds the Express app (security headers, CORS, health checks,
 SPA static serving); `routes/index.ts` mounts one sub-router per module
