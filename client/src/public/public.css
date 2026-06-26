@@ -26,3 +26,13 @@
     transform: none;
   }
 }
+
+/* Safe-area insets (notch / rounded corners / home indicator). Keeps the form's
+   base 1.25rem (px-5) gutters but grows them when the device reports larger
+   insets, and reserves space below the last control above the home indicator.
+   `max()` means it never shrinks below the design padding on ordinary screens. */
+.public-safe {
+  padding-left: max(1.25rem, env(safe-area-inset-left));
+  padding-right: max(1.25rem, env(safe-area-inset-right));
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}

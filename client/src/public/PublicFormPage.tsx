@@ -2,7 +2,7 @@
 //   Welcome → Questions → Thank You, with themed colors, smooth transitions
 //   (reduced-motion aware), shared-validator validation, and a multipart submit
 //   carrying attachment files inline (§13.1).
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { PublicFormDTO } from '@orlanda/shared';
@@ -129,13 +129,38 @@ function makeUuid(): string {
 }
 
 function LoadingState(): JSX.Element {
+  // After a while still loading, surface a "slow network" hint + a way to retry.
+  // Single timer, cleaned up on unmount so it never fires after the form loads.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSlow(true), 8000);
+    return () => window.clearTimeout(id);
+  }, []);
+
   return (
-    <div className="flex h-full items-center justify-center bg-brand-bg" aria-busy="true">
+    <div
+      className="flex h-full flex-col items-center justify-center gap-4 bg-brand-bg public-safe"
+      aria-busy="true"
+    >
       <span className="sr-only">Loading form…</span>
       <svg className="h-8 w-8 animate-spin text-brand-primary" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4z" />
       </svg>
+      {slow && (
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p aria-live="polite" className="max-w-xs text-sm text-brand-text/80">
+            Still loading… check your connection.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-flex min-h-tap items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-base font-medium text-brand-text shadow-sm hover:opacity-90"
+          >
+            Reload
+          </button>
+        </div>
+      )}
     </div>
   );
 }

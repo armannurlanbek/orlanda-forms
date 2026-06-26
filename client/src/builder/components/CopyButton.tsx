@@ -2,6 +2,7 @@
 // API with a textarea fallback for non-secure contexts.
 import { useState } from 'react';
 import { Button } from './ui';
+import { CheckIcon, CopyIcon } from './icons';
 
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
@@ -43,6 +44,7 @@ export function CopyButton({
         }
       }}
     >
+      {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
       {copied ? 'Copied!' : label}
     </Button>
   );

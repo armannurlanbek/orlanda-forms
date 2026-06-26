@@ -38,7 +38,7 @@ export function ScreenShell({
   return (
     <div
       key={screenKey}
-      className="public-screen-in mx-auto w-full max-w-md px-5 py-8"
+      className="public-screen-in public-safe mx-auto w-full max-w-md pt-8"
     >
       {beforeHeading}
       <h1 ref={headingRef} tabIndex={-1} className={`${headingClassName} outline-none`}>

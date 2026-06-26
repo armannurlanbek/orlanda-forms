@@ -242,7 +242,7 @@ function MultiSelectControl({
       aria-describedby={ids.describedBy}
       className="space-y-2"
     >
-      {hint && <p className="mb-1 text-sm text-brand-text/60">{hint}</p>}
+      {hint && <p className="mb-1 text-sm text-brand-text/80">{hint}</p>}
       {opts.map((opt, i) => {
         const id = `${ids.inputId}-${i}`;
         const checked = selected.has(opt);

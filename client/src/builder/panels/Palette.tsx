@@ -1,6 +1,7 @@
 // Left palette — add a question of each supported type to the canvas.
 import type { QuestionType } from '@orlanda/shared';
 import { useBuilderStore } from '../store';
+import { PlusIcon } from '../components/icons';
 
 const ITEMS: { type: QuestionType; label: string; hint: string }[] = [
   { type: 'text', label: 'Text', hint: 'Single line' },
@@ -22,10 +23,16 @@ export function Palette(): JSX.Element {
             key={it.type}
             type="button"
             onClick={() => addQuestion(it.type)}
-            className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm transition-colors hover:border-slate-400 hover:bg-slate-50"
+            className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm transition-colors hover:border-accent-200 hover:bg-accent-50"
           >
-            <span className="font-medium text-slate-800">{it.label}</span>
-            <span className="text-xs text-slate-400">{it.hint}</span>
+            <span className="min-w-0">
+              <span className="block font-medium text-slate-800">{it.label}</span>
+              <span className="block text-xs text-slate-400">{it.hint}</span>
+            </span>
+            <PlusIcon
+              size={16}
+              className="shrink-0 text-slate-300 transition-colors group-hover:text-accent"
+            />
           </button>
         ))}
       </div>

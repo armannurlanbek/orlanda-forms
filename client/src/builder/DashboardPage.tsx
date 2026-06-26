@@ -9,6 +9,7 @@ import { ApiError, api } from '../lib/api';
 import { AppHeader } from './components/AppHeader';
 import { CopyButton } from './components/CopyButton';
 import { Badge, Button, Card, Spinner } from './components/ui';
+import { ExternalLinkIcon, PlusIcon } from './components/icons';
 import { ToastProvider, useToast } from './components/Toast';
 
 function publicUrl(slug: string): string {
@@ -48,9 +49,12 @@ function DashboardInner(): JSX.Element {
       <AppHeader />
       <main className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-8">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900">Forms</h1>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Forms</h1>
+            <p className="mt-0.5 text-sm text-slate-500">Build forms that map answers into Monday.com.</p>
+          </div>
           <Button variant="primary" disabled={creating} onClick={() => createMutation.mutate()}>
-            {creating ? <Spinner /> : null}
+            {creating ? <Spinner /> : <PlusIcon size={16} />}
             New form
           </Button>
         </div>
@@ -70,18 +74,20 @@ function DashboardInner(): JSX.Element {
           <ul className="space-y-3">
             {formsQuery.data.map((f) => (
               <li key={f.id}>
-                <Card className="p-4">
+                <Card className="p-4 transition-colors hover:border-accent-200">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <Link
                           to={`/app/forms/${f.id}`}
-                          className="truncate text-base font-semibold text-slate-900 hover:underline"
+                          className="truncate text-base font-semibold text-slate-900 hover:text-accent-700 hover:underline"
                         >
                           {f.title || 'Untitled form'}
                         </Link>
                         <StatusBadge status={f.status} />
-                        <Badge tone="blue">{f.mappingMode === 'ai' ? 'AI' : 'Direct'}</Badge>
+                        <Badge tone={f.mappingMode === 'ai' ? 'accent' : 'slate'}>
+                          {f.mappingMode === 'ai' ? 'AI' : 'Direct'}
+                        </Badge>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
                         <span>
@@ -92,9 +98,10 @@ function DashboardInner(): JSX.Element {
                             href={publicUrl(f.slug)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="truncate text-blue-700 hover:underline"
+                            className="inline-flex max-w-full items-center gap-1 truncate text-accent-700 hover:underline"
                           >
-                            {publicUrl(f.slug)}
+                            <span className="truncate">{publicUrl(f.slug)}</span>
+                            <ExternalLinkIcon size={14} className="shrink-0" />
                           </a>
                         ) : (
                           <span className="text-slate-400">Not published yet</span>
@@ -123,8 +130,15 @@ function DashboardInner(): JSX.Element {
           </ul>
         ) : (
           <Card className="flex flex-col items-center gap-3 p-12 text-center">
-            <p className="text-slate-600">No forms yet.</p>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent" aria-hidden="true">
+              <PlusIcon size={24} />
+            </div>
+            <div>
+              <p className="font-medium text-slate-800">No forms yet</p>
+              <p className="mt-0.5 text-sm text-slate-500">Create your first form to start collecting responses.</p>
+            </div>
             <Button variant="primary" disabled={creating} onClick={() => createMutation.mutate()}>
+              {creating ? <Spinner /> : <PlusIcon size={16} />}
               Create your first form
             </Button>
           </Card>

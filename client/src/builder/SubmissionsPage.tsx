@@ -10,6 +10,7 @@ import type { FormDetail, SubmissionRow, SubmissionStatus } from '@orlanda/share
 import { ApiError, api } from '../lib/api';
 import { AppHeader } from './components/AppHeader';
 import { Badge, Button, Card, Spinner } from './components/ui';
+import { ArrowLeftIcon, ExternalLinkIcon, RefreshIcon } from './components/icons';
 import { ToastProvider, useToast } from './components/Toast';
 
 const STATUS_TONE: Record<SubmissionStatus, 'green' | 'amber' | 'red' | 'slate' | 'blue'> = {
@@ -58,9 +59,10 @@ function SubmissionRowItem({
               href={row.mondayItemUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-700 hover:underline"
+              className="inline-flex items-center gap-1 text-accent-700 hover:underline"
             >
               {row.mondayItemId ?? 'Open item'}
+              <ExternalLinkIcon size={13} className="shrink-0" />
             </a>
           ) : (
             <span className="text-slate-400">—</span>
@@ -76,7 +78,7 @@ function SubmissionRowItem({
             </Button>
             {canRetry ? (
               <Button size="sm" disabled={retrying} onClick={() => onRetry(row.id)}>
-                {retrying ? <Spinner /> : null}
+                {retrying ? <Spinner /> : <RefreshIcon size={15} />}
                 Retry
               </Button>
             ) : null}
@@ -176,9 +178,10 @@ function SubmissionsInner(): JSX.Element {
         <button
           type="button"
           onClick={() => navigate(`/app/forms/${id}`)}
-          className="text-sm text-slate-500 hover:text-slate-800 hover:underline"
+          className="inline-flex items-center gap-1 rounded text-sm text-slate-500 transition-colors hover:text-accent-700"
         >
-          ← Builder
+          <ArrowLeftIcon size={16} />
+          Builder
         </button>
       </AppHeader>
       <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">
@@ -188,7 +191,7 @@ function SubmissionsInner(): JSX.Element {
             {formQuery.data ? <p className="text-sm text-slate-500">{formQuery.data.title}</p> : null}
           </div>
           <Button onClick={() => subsQuery.refetch()} disabled={subsQuery.isFetching}>
-            {subsQuery.isFetching ? <Spinner /> : null}
+            {subsQuery.isFetching ? <Spinner /> : <RefreshIcon size={15} />}
             Refresh
           </Button>
         </div>

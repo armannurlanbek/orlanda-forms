@@ -7,6 +7,7 @@ import type { AuthUser } from '@orlanda/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Button, Card, Input, Label, Spinner } from './components/ui';
+import { BrandMark } from './components/AppHeader';
 
 export function LoginPage(): JSX.Element {
   const { user, loading, refetch } = useAuth();
@@ -39,11 +40,11 @@ export function LoginPage(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-slate-50 p-4">
+    <div className="flex min-h-full items-center justify-center bg-gradient-to-b from-accent-50 to-slate-50 p-4">
       <Card className="w-full max-w-sm p-8">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-slate-900">Orlanda Forms</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in to the builder.</p>
+          <BrandMark />
+          <p className="mt-3 text-sm text-slate-500">Sign in to the builder.</p>
         </div>
         <form onSubmit={onSubmit} noValidate className="space-y-4">
           <div>

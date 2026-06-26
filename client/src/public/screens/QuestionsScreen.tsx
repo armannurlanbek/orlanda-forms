@@ -46,7 +46,12 @@ export function QuestionsScreen({
   return (
     <ScreenShell screenKey="questions" heading={form.title}>
       {form.description && (
-        <p className="mt-1 mb-4 text-base text-brand-text/70">{form.description}</p>
+        <p className="mt-1 mb-4 text-base text-brand-text/80">{form.description}</p>
+      )}
+
+      {/* Subtle, themed length hint — only for longer forms; short forms stay clean. */}
+      {sorted.length > 5 && (
+        <p className="mt-2 text-sm font-medium text-brand-primary">{sorted.length} questions</p>
       )}
 
       <form ref={formRef} onSubmit={handleSubmit} noValidate className="mt-6">

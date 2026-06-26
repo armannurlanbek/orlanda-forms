@@ -12,6 +12,7 @@ import { useBeforeUnloadGuard, useGuardedNavigate } from './hooks/useUnsavedGuar
 import { usePublishReadiness } from './hooks/usePublishReadiness';
 import { AppHeader } from './components/AppHeader';
 import { Badge, Button, Input, Spinner } from './components/ui';
+import { ArrowLeftIcon } from './components/icons';
 import { ToastProvider, useToast } from './components/Toast';
 import { PreviewMapping } from './components/PreviewMapping';
 import { Palette } from './panels/Palette';
@@ -159,9 +160,10 @@ function BuilderInner(): JSX.Element {
         <button
           type="button"
           onClick={() => guardedNavigate('/app')}
-          className="text-sm text-slate-500 hover:text-slate-800 hover:underline"
+          className="inline-flex items-center gap-1 rounded text-sm text-slate-500 transition-colors hover:text-accent-700"
         >
-          ← Forms
+          <ArrowLeftIcon size={16} />
+          Forms
         </button>
       </AppHeader>
 
@@ -182,7 +184,7 @@ function BuilderInner(): JSX.Element {
               href={`${window.location.origin}/${slug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden truncate text-sm text-blue-700 hover:underline sm:inline"
+              className="hidden truncate text-sm text-accent-700 hover:underline sm:inline"
             >
               /{slug}
             </a>
@@ -202,8 +204,7 @@ function BuilderInner(): JSX.Element {
             {saving ? 'Saving…' : 'Save'}
           </Button>
           <Button
-            variant="primary"
-            className="bg-emerald-600 hover:bg-emerald-700"
+            variant="success"
             onClick={onPublish}
             disabled={publishDisabled}
             title={dirty ? 'Save before publishing' : readiness.ready ? '' : readiness.issues[0]}
@@ -228,8 +229,8 @@ function BuilderInner(): JSX.Element {
             key={t}
             type="button"
             onClick={() => setMobileTab(t)}
-            className={`flex-1 px-3 py-2 text-sm font-medium ${
-              mobileTab === t ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'
+            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+              mobileTab === t ? 'border-b-2 border-accent text-accent-700' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             {t === 'add' ? 'Add' : t === 'questions' ? 'Questions' : 'Settings'}

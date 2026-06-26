@@ -57,7 +57,7 @@ export function Field({
         <fieldset>
           <legend className="mb-2 block text-base font-medium text-brand-text">{labelNode}</legend>
           {helpText && (
-            <p id={helpId} className="mb-2 text-sm text-brand-text/70">
+            <p id={helpId} className="mb-2 text-sm text-brand-text/80">
               {helpText}
             </p>
           )}
@@ -69,7 +69,7 @@ export function Field({
             {labelNode}
           </label>
           {helpText && (
-            <p id={helpId} className="mb-2 text-sm text-brand-text/70">
+            <p id={helpId} className="mb-2 text-sm text-brand-text/80">
               {helpText}
             </p>
           )}

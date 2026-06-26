@@ -6,7 +6,8 @@ import { CSS } from '@dnd-kit/utilities';
 import type { QuestionType } from '@orlanda/shared';
 import type { DraftQuestion } from '../store';
 import { useBuilderStore } from '../store';
-import { Badge, Button, Input, Label, Textarea } from './ui';
+import { Badge, Button, IconButton, Input, Label, Textarea } from './ui';
+import { GripIcon, TrashIcon, XIcon } from './icons';
 
 const TYPE_LABEL: Record<QuestionType, string> = {
   text: 'Text',
@@ -40,14 +41,13 @@ function OptionsEditor({ q }: { q: DraftQuestion }): JSX.Element {
                 setOpts(next);
               }}
             />
-            <Button
-              size="sm"
-              variant="ghost"
+            <IconButton
+              tone="danger"
               aria-label={`Remove option ${i + 1}`}
               onClick={() => setOpts(opts.filter((_, idx) => idx !== i))}
             >
-              ✕
-            </Button>
+              <XIcon size={16} />
+            </IconButton>
           </div>
         ))}
       </div>
@@ -150,8 +150,9 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
       ref={setNodeRef}
       style={style}
       onClick={() => select(q.key)}
-      className={`rounded-lg border bg-white p-4 shadow-sm transition-colors ${
-        isSelected ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-200'
+      onFocusCapture={() => select(q.key)}
+      className={`rounded-lg border bg-white p-4 shadow-card transition-colors ${
+        isSelected ? 'border-accent ring-1 ring-accent' : 'border-slate-200 hover:border-slate-300'
       }`}
     >
       <div className="flex items-start gap-2">
@@ -162,7 +163,7 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
           {...attributes}
           {...listeners}
         >
-          ⠿
+          <GripIcon size={18} />
         </button>
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -180,6 +181,7 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
                 removeQuestion(q.key);
               }}
             >
+              <TrashIcon size={16} />
               Delete
             </Button>
           </div>
@@ -201,9 +203,10 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
             />
           </div>
 
-          <label className="mt-3 inline-flex items-center gap-2 text-sm text-slate-700">
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
+              className="h-4 w-4 cursor-pointer accent-accent"
               checked={q.required}
               onChange={(e) => updateQuestion(q.key, { required: e.target.checked })}
             />

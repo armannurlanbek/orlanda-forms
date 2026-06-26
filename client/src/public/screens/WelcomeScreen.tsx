@@ -56,7 +56,7 @@ export function WelcomeScreen({ form, onStart }: Props): JSX.Element {
         {form.welcomeButtonLabel || 'Start'}
       </button>
 
-      <p className="mt-6 text-center text-xs leading-relaxed text-brand-text/60">{privacy}</p>
+      <p className="mt-6 text-center text-xs leading-relaxed text-brand-text/80">{privacy}</p>
     </ScreenShell>
   );
 }

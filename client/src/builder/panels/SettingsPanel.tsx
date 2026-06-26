@@ -10,6 +10,7 @@ import { AiMapping } from './AiMapping';
 import { ColorField } from '../components/ColorField';
 import { LogoUpload } from '../components/LogoUpload';
 import { Button, Input, Label, Select, Spinner, Textarea } from '../components/ui';
+import { RefreshIcon } from '../components/icons';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -22,7 +23,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function ModeToggle({ mode, onChange }: { mode: MappingMode; onChange: (m: MappingMode) => void }): JSX.Element {
   return (
-    <div role="tablist" aria-label="Mapping mode" className="inline-flex rounded-md border border-slate-300 p-0.5">
+    <div role="tablist" aria-label="Mapping mode" className="inline-flex rounded-md border border-slate-300 bg-slate-50 p-0.5">
       {(['direct', 'ai'] as MappingMode[]).map((m) => (
         <button
           key={m}
@@ -30,8 +31,8 @@ function ModeToggle({ mode, onChange }: { mode: MappingMode; onChange: (m: Mappi
           aria-selected={mode === m}
           type="button"
           onClick={() => onChange(m)}
-          className={`rounded px-3 py-1 text-sm font-medium ${
-            mode === m ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+          className={`cursor-pointer rounded px-3 py-1 text-sm font-medium transition-colors ${
+            mode === m ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           {m === 'direct' ? 'Direct' : 'AI'}
@@ -81,7 +82,7 @@ export function SettingsPanel(): JSX.Element {
         {form.boardId ? (
           <div className="mt-3 flex items-center gap-2">
             <Button size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-              {refresh.isPending ? <Spinner /> : null}
+              {refresh.isPending ? <Spinner /> : <RefreshIcon size={15} />}
               Refresh schema
             </Button>
             {schemaQuery.isFetching ? <span className="text-xs text-slate-400">Loading schema…</span> : null}
