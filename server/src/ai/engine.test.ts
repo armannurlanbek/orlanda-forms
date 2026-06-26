@@ -244,19 +244,17 @@ describe('runAiMapping — link-column search + emit loop (§18 linked items)', 
     expect(toolResultTurn).toBeDefined();
   });
 
-  it('(b) emits an id NOT in the allow-set → dropped', async () => {
+  it('(b) keeps emitting a hallucinated id → dropped after the repair budget', async () => {
     searchBoardItemsByNameMock.mockResolvedValue([{ id: '999', name: 'Acme Corp' }]);
 
+    // Search returns 999, but the model insists on 777 (never returned). The
+    // engine bounces it MAX_LINK_REPAIRS (2) times, then finalizes it dropped.
+    const bad = emitMsg({ itemName: 'Acme', columnValues: { text_a: 'hi', link_b: 777 }, reasoning: 'guessed' });
     createMock
       .mockResolvedValueOnce(searchMsg({ boardId: '555', query: 'Acme' }))
-      .mockResolvedValueOnce(
-        emitMsg({
-          itemName: 'Acme submission',
-          // 777 was never returned by search → hallucinated → must be dropped.
-          columnValues: { text_a: 'hi', link_b: 777 },
-          reasoning: 'guessed',
-        }),
-      );
+      .mockResolvedValueOnce(bad)
+      .mockResolvedValueOnce(bad)
+      .mockResolvedValueOnce(bad);
 
     const { runAiMapping } = await import('./engine');
     const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });
@@ -269,15 +267,36 @@ describe('runAiMapping — link-column search + emit loop (§18 linked items)', 
     });
   });
 
-  it('emits a link id with no prior search → dropped (allow-set empty)', async () => {
-    // Model emits straight away without ever searching; the id cannot be trusted.
-    createMock.mockResolvedValueOnce(
-      emitMsg({
-        itemName: 'No search',
-        columnValues: { text_a: 'x', link_b: 999 },
-        reasoning: 'no search',
-      }),
+  it('bounces an emit whose link id was not searched, then resolves after the model searches', async () => {
+    // THE FIX: model emits link_b=999 WITHOUT searching → engine bounces with a
+    // corrective tool_result → model searches → re-emits → now accepted (wired).
+    searchBoardItemsByNameMock.mockResolvedValue([{ id: '999', name: 'Acme Corp' }]);
+    createMock
+      .mockResolvedValueOnce(emitMsg({ itemName: 'Acme', columnValues: { link_b: 999 }, reasoning: 'guess' }))
+      .mockResolvedValueOnce(searchMsg({ boardId: '555', query: 'Acme' }))
+      .mockResolvedValueOnce(emitMsg({ itemName: 'Acme', columnValues: { link_b: 999 }, reasoning: 'searched' }));
+
+    const { runAiMapping } = await import('./engine');
+    const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });
+
+    expect(searchBoardItemsByNameMock).toHaveBeenCalledWith('555');
+    expect(res.columnValues.link_b).toEqual({ item_ids: [999] });
+    expect(res.dropped.find((d) => d.columnId === 'link_b')).toBeUndefined();
+
+    // The first bounce was an is_error tool_result on the emit tool_use block.
+    const secondCall = createMock.mock.calls[1][0];
+    const corrective = secondCall.messages.find(
+      (m: { role: string; content: unknown }) =>
+        m.role === 'user' &&
+        Array.isArray(m.content) &&
+        (m.content[0] as { is_error?: boolean })?.is_error === true,
     );
+    expect(corrective).toBeDefined();
+  });
+
+  it('drops a link id when the model never searches (after the repair budget)', async () => {
+    const bad = emitMsg({ itemName: 'No search', columnValues: { text_a: 'x', link_b: 999 }, reasoning: 'no search' });
+    createMock.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad).mockResolvedValueOnce(bad);
 
     const { runAiMapping } = await import('./engine');
     const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });
@@ -293,15 +312,16 @@ describe('runAiMapping — link-column search + emit loop (§18 linked items)', 
   it('a failed Monday search is treated as no candidates → link dropped, mapping survives', async () => {
     searchBoardItemsByNameMock.mockRejectedValue(new Error('rate limit'));
 
+    const bad = emitMsg({
+      itemName: 'Acme submission',
+      columnValues: { text_a: 'still works', link_b: 999 },
+      reasoning: 'search failed',
+    });
     createMock
       .mockResolvedValueOnce(searchMsg({ boardId: '555', query: 'Acme' }))
-      .mockResolvedValueOnce(
-        emitMsg({
-          itemName: 'Acme submission',
-          columnValues: { text_a: 'still works', link_b: 999 },
-          reasoning: 'search failed',
-        }),
-      );
+      .mockResolvedValueOnce(bad)
+      .mockResolvedValueOnce(bad)
+      .mockResolvedValueOnce(bad);
 
     const { runAiMapping } = await import('./engine');
     const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });

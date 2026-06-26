@@ -16,6 +16,7 @@ import type { AllowlistColumn } from '@orlanda/shared';
 import type { QuestionDef } from '@orlanda/shared';
 import type { AnswersMap } from '@orlanda/shared';
 import { env } from '../config/env';
+import { logger } from '../config/logger';
 import { prisma } from '../db/prisma';
 import { validateAndConvertMapping } from './validate';
 import type { AiToolInput } from './validate';
@@ -41,6 +42,11 @@ const SEARCH_TOOL_NAME = 'search_linked_board';
 // Cap on search round-trips before we force the final mapping (§18). Keeps cost
 // bounded even if the model keeps asking to search.
 const MAX_SEARCH_ROUNDS = 3;
+
+// How many times we bounce an emit back to the model when it provided a link id
+// that did NOT come from search_linked_board (skipped/mis-targeted search, or a
+// hallucinated id). After this we finalize and drop the offending links.
+const MAX_LINK_REPAIRS = 2;
 
 // How many ranked candidates we surface per search (and add to the allow-set).
 const TOP_CANDIDATES = 8;
@@ -383,6 +389,50 @@ function withoutLinkColumns(toolInput: AiToolInput, linkColumnIds: Set<string>):
 }
 
 /**
+ * Link columns the model gave a NON-EMPTY value for that did NOT come from a
+ * search_linked_board result (id missing from the per-board allow-set). These are
+ * skipped searches, wrong-board searches, or hallucinated ids — we bounce them
+ * back to the model with a reminder instead of silently dropping (so a usable id
+ * can still be obtained). Omitted columns are not "unresolved" — omitting is fine.
+ */
+function unresolvedLinkColumns(
+  toolInput: AiToolInput,
+  allowlist: AllowlistColumn[],
+  allowSet: LinkAllowSet,
+): AllowlistColumn[] {
+  const cv =
+    toolInput.columnValues && typeof toolInput.columnValues === 'object' && !Array.isArray(toolInput.columnValues)
+      ? (toolInput.columnValues as Record<string, unknown>)
+      : {};
+  const out: AllowlistColumn[] = [];
+  for (const col of allowlist) {
+    if (!isLinkColumn(col.type)) continue;
+    const raw = cv[col.columnId];
+    if (raw === undefined || raw === null || raw === '') continue; // omitted — fine
+    const id = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
+    const allowed = col.linkBoardId ? allowSet.get(col.linkBoardId) : undefined;
+    if (!id || !allowed || !allowed.has(id)) out.push(col);
+  }
+  return out;
+}
+
+/** Corrective message telling the model exactly which boards to search before it
+ *  may use an id for each unresolved link column. */
+function buildLinkSearchReminder(cols: AllowlistColumn[]): string {
+  const lines = cols.map(
+    (c) =>
+      `- column "${c.title}" (${c.columnId}): you must call search_linked_board with ` +
+      `boardId="${c.linkBoardId ?? ''}" and a query from the answers, then use ONLY an id ` +
+      `that tool returns. If nothing matches, omit this column.`,
+  );
+  return (
+    'Some link columns were given ids that did not come from search_linked_board, so ' +
+    'they cannot be used (no invented ids). Before emitting again, search for each:\n' +
+    lines.join('\n')
+  );
+}
+
+/**
  * Run the AI mapping for a single submission (§18). Throws AiError(terminal) on
  * guard breach, ceiling breach, or a second failed attempt.
  */
@@ -439,6 +489,20 @@ export async function runAiMapping(params: {
     // Resolve link columns against the allow-set, then hand the remaining
     // (non-link) columns to the FROZEN validator. Merge both results.
     const link = resolveLinkColumns(toolInput, params.allowlist, allowSet);
+    const linkCols = params.allowlist.filter((c) => isLinkColumn(c.type));
+    if (linkCols.length > 0) {
+      // Non-sensitive diagnostics (board/item ids are not secrets): which boards
+      // the model actually searched vs. which the link columns expect, and what
+      // was dropped. Lets us tell "model skipped search" from a keying issue.
+      logger.info(
+        {
+          searchedBoards: Object.fromEntries([...allowSet.entries()].map(([k, v]) => [k, v.size])),
+          linkColumns: linkCols.map((c) => ({ columnId: c.columnId, linkBoardId: c.linkBoardId })),
+          linkDropped: link.dropped.map((d) => d.columnId),
+        },
+        'ai link resolve',
+      );
+    }
     const nonLinkAllowlist = params.allowlist.filter((c) => !isLinkColumn(c.type));
     const nonLinkInput = withoutLinkColumns(toolInput, link.linkColumnIds);
     const outcome = validateAndConvertMapping(nonLinkInput, nonLinkAllowlist, {
@@ -518,7 +582,7 @@ async function runForcedEmit(ctx: LoopCtx): Promise<AiMappingResult> {
  * emit_mapping. A single repair retry still applies if the forced call fails.
  */
 async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise<AiMappingResult> {
-  const { client, system, userContent, allowSet, finalize, reservationKey } = ctx;
+  const { client, system, userContent, allowSet, finalize, reservationKey, params } = ctx;
   const tools: Anthropic.Tool[] = [
     { name: TOOL_NAME, description: TOOL_DESCRIPTION, input_schema: EMIT_MAPPING_SCHEMA },
     { name: SEARCH_TOOL_NAME, description: SEARCH_TOOL_DESCRIPTION, input_schema: SEARCH_LINKED_BOARD_SCHEMA },
@@ -527,11 +591,11 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userContent }];
   let lastRaw = '';
   let searchRounds = 0;
+  let linkRepairs = 0;
 
-  // Each loop iteration is one model turn. We allow up to MAX_SEARCH_ROUNDS
-  // search round-trips; an emit (or the forced final emit) breaks out.
-  // The +2 budget covers the forced final turn and one repair turn.
-  for (let turn = 0; turn < MAX_SEARCH_ROUNDS + 2; turn++) {
+  // Each iteration is one model turn. Budget covers searches + link-repair
+  // bounces + the forced final emit + one repair turn.
+  for (let turn = 0; turn < MAX_SEARCH_ROUNDS + MAX_LINK_REPAIRS + 3; turn++) {
     const forceEmit = searchRounds >= MAX_SEARCH_ROUNDS;
     const msg = await callAnthropic(client, {
       system,
@@ -543,37 +607,57 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
     lastRaw = JSON.stringify(msg.content);
 
     const emitInput = parseToolUse(msg);
-    if (emitInput) return finalize(emitInput, lastRaw);
+    if (emitInput) {
+      // Accept the emit UNLESS it carries link ids that never came from a search
+      // and we still have budget to make the model search them. Forcing the model
+      // to search instead of silently dropping is what makes link/mirror mapping
+      // actually work when the model skips or mis-targets search_linked_board.
+      const unresolved = unresolvedLinkColumns(emitInput, params.allowlist, allowSet);
+      if (unresolved.length === 0 || forceEmit || linkRepairs >= MAX_LINK_REPAIRS) {
+        return finalize(emitInput, lastRaw);
+      }
+      // else: fall through to answer every tool_use block — the emit block gets a
+      // corrective tool_result telling the model exactly which boards to search.
+    }
 
-    // If we just forced emit_mapping but got nothing usable, do one repair turn.
+    // If we forced emit_mapping but got nothing usable, do one repair turn.
     if (forceEmit) {
       messages.push({ role: 'assistant', content: msg.content });
       messages.push({ role: 'user', content: REPAIR_MESSAGE });
-      // Next iteration still has forceEmit true (searchRounds unchanged), giving
-      // exactly one repair attempt before the loop budget is exhausted.
       continue;
     }
 
-    // The model may issue several tool_use blocks in one turn (parallel tool
-    // use). The Anthropic API requires a tool_result for EVERY tool_use in the
-    // preceding assistant message, so we must answer all of them — not just the
-    // first — or the next call is rejected (400 tool_use/tool_result mismatch).
-    const toolUses = findAllToolUse(msg);
-    const searchUses = toolUses.filter((b) => b.id && b.name === SEARCH_TOOL_NAME);
-    if (searchUses.length > 0) {
+    // Answer EVERY tool_use block in the turn (parallel tool use is allowed; the
+    // API requires a tool_result for each). Search blocks run; an emit block with
+    // unresolved links is bounced back with a search reminder.
+    const toolUses = findAllToolUse(msg).filter((b) => b.id);
+    if (toolUses.length > 0) {
       const toolResults: ToolResultBlock[] = [];
+      let didSearch = false;
+      let didLinkRepair = false;
       for (const block of toolUses) {
         if (!block.id) continue;
         if (block.name === SEARCH_TOOL_NAME) {
           const result = await runLinkedSearch(block.input, allowSet);
+          didSearch = true;
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
             content: JSON.stringify({ candidates: result.candidates }),
           });
+        } else if (block.name === TOOL_NAME) {
+          // emit with unresolved link ids → reject, tell the model to search.
+          const unresolved = emitInput
+            ? unresolvedLinkColumns(emitInput, params.allowlist, allowSet)
+            : params.allowlist.filter((c) => isLinkColumn(c.type));
+          didLinkRepair = true;
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: buildLinkSearchReminder(unresolved),
+            is_error: true,
+          });
         } else {
-          // Any other parallel tool_use (only emit_mapping exists, but be
-          // defensive) still needs a result so the conversation stays valid.
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
@@ -582,9 +666,8 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
           });
         }
       }
-      // Count the turn as one search round regardless of how many parallel
-      // searches it contained; the loop's turn budget bounds total cost.
-      searchRounds += 1;
+      if (didSearch) searchRounds += 1;
+      if (didLinkRepair) linkRepairs += 1;
       messages.push({ role: 'assistant', content: msg.content });
       messages.push({ role: 'user', content: toolResults });
       continue;
