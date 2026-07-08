@@ -294,6 +294,44 @@ describe('runAiMapping — link-column search + emit loop (§18 linked items)', 
     expect(corrective).toBeDefined();
   });
 
+  it('resolves a link id emitted in Monday wire shape { item_ids: [...] } after a search', async () => {
+    // PROD BUG: the model searches correctly, then emits the board_relation in
+    // Monday's wire shape { item_ids: ["999"] } instead of the bare id. The id IS in
+    // the allow-set, so it must be unwrapped and accepted — not dropped as "not found".
+    searchBoardItemsByNameMock.mockResolvedValue([{ id: '999', name: 'Acme Corp' }]);
+    createMock
+      .mockResolvedValueOnce(searchMsg({ boardId: '555', query: 'Acme' }))
+      .mockResolvedValueOnce(
+        emitMsg({ itemName: 'Acme', columnValues: { link_b: { item_ids: ['999'] } }, reasoning: 'wire shape' }),
+      );
+
+    const { runAiMapping } = await import('./engine');
+    const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });
+
+    expect(res.columnValues.link_b).toEqual({ item_ids: [999] });
+    expect(res.dropped.find((d) => d.columnId === 'link_b')).toBeUndefined();
+  });
+
+  it('still drops a wire-shape link id that was never searched (no hallucinated ids)', async () => {
+    // Unwrapping the wire shape must NOT weaken the allow-set guard: an id inside
+    // { item_ids: [...] } that never came from search is still rejected.
+    const bad = emitMsg({
+      itemName: 'x',
+      columnValues: { text_a: 'x', link_b: { item_ids: ['777'] } },
+      reasoning: 'hallucinated wire shape',
+    });
+    createMock.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad).mockResolvedValueOnce(bad);
+
+    const { runAiMapping } = await import('./engine');
+    const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });
+
+    expect(res.columnValues.link_b).toBeUndefined();
+    expect(res.dropped).toContainEqual({
+      columnId: 'link_b',
+      reason: 'linked item id not found via search',
+    });
+  });
+
   it('drops a link id when the model never searches (after the repair budget)', async () => {
     const bad = emitMsg({ itemName: 'No search', columnValues: { text_a: 'x', link_b: 999 }, reasoning: 'no search' });
     createMock.mockResolvedValueOnce(bad).mockResolvedValueOnce(bad).mockResolvedValueOnce(bad);

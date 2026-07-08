@@ -325,13 +325,42 @@ async function runLinkedSearch(
   };
 }
 
-/** The normalized linked-item id IFF it came from a search_linked_board result
- *  (present in the per-board allow-set); otherwise null. Single source of truth for
- *  the "never trust an unsearched/hallucinated id" rule (§18). */
-function trustedLinkId(col: AllowlistColumn, raw: unknown, allowSet: LinkAllowSet): string | null {
-  const id = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
-  const allowed = col.linkBoardId ? allowSet.get(col.linkBoardId) : undefined;
-  return id && allowed && allowed.has(id) ? id : null;
+/**
+ * Extract candidate linked-item id strings from whatever shape the model emitted
+ * for a link column. The prompt asks for a bare id, but models frequently emit
+ * Monday's wire shape ({ item_ids: [id] }) or a bare array instead — accept them all
+ * here; the allow-set check in trustedLinkIds still guarantees only searched ids
+ * survive, so unwrapping cannot let a hallucinated id through.
+ */
+function candidateLinkIds(raw: unknown): string[] {
+  const scalar = (v: unknown): string[] => {
+    if (typeof v === 'number' || typeof v === 'string') {
+      const s = String(v).trim();
+      return s ? [s] : [];
+    }
+    return [];
+  };
+  if (raw === null || raw === undefined) return [];
+  if (typeof raw === 'number' || typeof raw === 'string') return scalar(raw);
+  if (Array.isArray(raw)) return raw.flatMap(scalar);
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    const arr = obj.item_ids ?? obj.itemIds ?? obj.ids;
+    if (Array.isArray(arr)) return arr.flatMap(scalar);
+    return scalar(obj.id ?? obj.value);
+  }
+  return [];
+}
+
+/** The searched-and-trusted linked-item id(s) for a column: candidate ids from the
+ *  emitted value (any common shape) that are present in the per-board allow-set.
+ *  Single source of truth for the "never write an unsearched/hallucinated id" rule
+ *  (§18). Empty when the column has no board, no search happened, or no id matched. */
+function trustedLinkIds(col: AllowlistColumn, raw: unknown, allowSet: LinkAllowSet): string[] {
+  if (!col.linkBoardId) return [];
+  const allowed = allowSet.get(col.linkBoardId);
+  if (!allowed) return [];
+  return candidateLinkIds(raw).filter((id) => allowed.has(id));
 }
 
 /**
@@ -368,9 +397,10 @@ function resolveLinkColumns(
       continue;
     }
 
-    // Accept the id ONLY if it came from a search_linked_board result (§18).
-    const trusted = trustedLinkId(col, raw, allowSet);
-    if (!trusted) {
+    // Accept only ids that came from a search_linked_board result (§18); unwrap the
+    // wire shape / array the model may emit before checking the allow-set.
+    const trusted = trustedLinkIds(col, raw, allowSet);
+    if (trusted.length === 0) {
       dropped.push({ columnId: col.columnId, reason: 'linked item id not found via search' });
       continue;
     }
@@ -428,8 +458,8 @@ function unresolvedLinkColumns(
     if (!col.linkBoardId) continue;
     const raw = cv[col.columnId];
     if (raw === undefined || raw === null || raw === '') continue; // omitted — fine
-    // Same trust rule as resolveLinkColumns: unresolved unless the id was searched.
-    if (!trustedLinkId(col, raw, allowSet)) out.push(col);
+    // Same trust rule as resolveLinkColumns: unresolved unless a searched id survives.
+    if (trustedLinkIds(col, raw, allowSet).length === 0) out.push(col);
   }
   return out;
 }
