@@ -10,6 +10,7 @@ import { api, ApiError } from '../lib/api';
 import { NotFoundPage } from './NotFoundPage';
 import { themeToCssVars } from './theme';
 import { useActiveLang, usePublicForm } from './usePublicForm';
+import { LanguageToggle } from './LanguageToggle';
 import { submitPublicForm } from './submit';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { QuestionsScreen } from './screens/QuestionsScreen';
@@ -65,7 +66,7 @@ function PublicForm({ form }: { form: PublicFormDTO }): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const { activeLang } = useActiveLang(form);
+  const { activeLang, setActiveLang, dir } = useActiveLang(form);
   const controller = usePublicForm(form.questions, activeLang);
   const themeVars = useMemo(() => themeToCssVars(form.theme), [form.theme]);
 
@@ -101,7 +102,12 @@ function PublicForm({ form }: { form: PublicFormDTO }): JSX.Element {
   }, [form.slug, controller, idempotencyKey]);
 
   return (
-    <main style={themeVars} className="min-h-full bg-brand-bg text-brand-text">
+    <main dir={dir} style={themeVars} className="min-h-full bg-brand-bg text-brand-text">
+      {form.languages.length > 1 && (
+        <div className="mx-auto flex w-full max-w-md justify-end px-5 pt-4">
+          <LanguageToggle languages={form.languages} activeLang={activeLang} onChange={setActiveLang} />
+        </div>
+      )}
       {screen === 'welcome' && (
         <WelcomeScreen form={form} onStart={() => setScreen('questions')} />
       )}
