@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { QuestionType } from '@orlanda/shared';
 import type { DraftQuestion } from '../store';
 import { useBuilderStore } from '../store';
+import { useTranslatableQuestionField } from '../hooks/useTranslatable';
 import { Badge, Button, IconButton, Input, Label, Textarea } from './ui';
 import { GripIcon, TrashIcon, XIcon } from './icons';
 
@@ -20,10 +21,40 @@ const TYPE_LABEL: Record<QuestionType, string> = {
 
 function OptionsEditor({ q }: { q: DraftQuestion }): JSX.Element {
   const updateQuestion = useBuilderStore((s) => s.updateQuestion);
+  const setOptionLabel = useBuilderStore((s) => s.setOptionLabel);
+  const editingLang = useBuilderStore((s) => s.editingLang);
+  const defaultLang = useBuilderStore((s) => s.form.defaultLang);
+  const isDefault = editingLang === defaultLang;
   const opts = q.options.options ?? [];
 
   function setOpts(next: string[]): void {
     updateQuestion(q.key, { options: { ...q.options, options: next } });
+  }
+
+  // Question STRUCTURE (the option list itself, its count, min/max selections)
+  // is only ever edited in the default language. Outside the default language,
+  // only each option's translated LABEL is editable, base options shown read-only.
+  if (!isDefault) {
+    return (
+      <div className="mt-3 rounded-md bg-slate-50 p-3">
+        <Label>Option labels</Label>
+        <div className="space-y-2">
+          {opts.map((opt, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-1/2 shrink-0 truncate text-sm text-slate-500" title={opt}>
+                {opt}
+              </span>
+              <Input
+                aria-label={`Translated label for option "${opt}"`}
+                placeholder={opt}
+                value={q.translations[editingLang]?.optionLabels?.[opt] ?? ''}
+                onChange={(e) => setOptionLabel(q.key, editingLang, opt, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -136,6 +167,8 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
   const select = useBuilderStore((s) => s.select);
   const selectedKey = useBuilderStore((s) => s.selectedKey);
   const isSelected = selectedKey === q.key;
+  const labelField = useTranslatableQuestionField(q, 'label');
+  const helpField = useTranslatableQuestionField(q, 'helpText');
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -189,8 +222,9 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
           <Label htmlFor={`${q.key}-label`}>Label</Label>
           <Input
             id={`${q.key}-label`}
-            value={q.label}
-            onChange={(e) => updateQuestion(q.key, { label: e.target.value })}
+            value={labelField.value}
+            placeholder={labelField.placeholder}
+            onChange={(e) => labelField.onChange(e.target.value)}
           />
 
           <div className="mt-2">
@@ -198,8 +232,9 @@ export function QuestionCard({ q, index }: { q: DraftQuestion; index: number }):
             <Textarea
               id={`${q.key}-help`}
               rows={2}
-              value={q.helpText}
-              onChange={(e) => updateQuestion(q.key, { helpText: e.target.value })}
+              value={helpField.value}
+              placeholder={helpField.placeholder}
+              onChange={(e) => helpField.onChange(e.target.value)}
             />
           </div>
 

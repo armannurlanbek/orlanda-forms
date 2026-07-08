@@ -3,7 +3,9 @@
 // as plain text (§16.7) — never raw HTML.
 import { useState } from 'react';
 import type { PreviewMappingResult } from '@orlanda/shared';
+import { languageDir } from '@orlanda/shared';
 import { ApiError, api } from '../../lib/api';
+import { useBuilderStore } from '../store';
 import { Badge, Button, Modal, Spinner } from './ui';
 
 export function PreviewMapping({ formId }: { formId: string }): JSX.Element {
@@ -11,6 +13,12 @@ export function PreviewMapping({ formId }: { formId: string }): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PreviewMappingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Mapping is always computed from the default-language (canonical) values —
+  // translations are display-only and never reach the mapping orchestrator
+  // (§ multilingual forms). We still honor the builder's current editing
+  // language for the preview container's reading direction, for consistency
+  // with the public form's own RTL handling.
+  const editingLang = useBuilderStore((s) => s.editingLang);
 
   async function run(): Promise<void> {
     setLoading(true);
@@ -42,7 +50,7 @@ export function PreviewMapping({ formId }: { formId: string }): JSX.Element {
             {error}
           </p>
         ) : result ? (
-          <div className="space-y-4 text-sm">
+          <div dir={languageDir(editingLang)} className="space-y-4 text-sm">
             <div>
               <span className="font-semibold text-slate-700">Item name:</span>{' '}
               <span className="text-slate-900">{result.itemName}</span>

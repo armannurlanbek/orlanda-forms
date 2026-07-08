@@ -6,6 +6,7 @@ import type { MappingMode, Theme } from '@orlanda/shared';
 import { SUPPORTED_LANGUAGES, languageInfo, meetsAA, slugError } from '@orlanda/shared';
 import { useBuilderStore } from '../store';
 import { useBoardSchema, useBoards, useRefreshBoardSchema } from '../hooks/useMonday';
+import { useTranslatableFormField } from '../hooks/useTranslatable';
 import { DirectMapping } from './DirectMapping';
 import { AiMapping } from './AiMapping';
 import { ColorField } from '../components/ColorField';
@@ -148,6 +149,7 @@ export function SettingsPanel(): JSX.Element {
   const setField = useBuilderStore((s) => s.setField);
   const setMappingMode = useBuilderStore((s) => s.setMappingMode);
   const setTheme = useBuilderStore((s) => s.setTheme);
+  const editingLang = useBuilderStore((s) => s.editingLang);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const slugErr = form.slug ? slugError(form.slug) : null;
@@ -163,6 +165,14 @@ export function SettingsPanel(): JSX.Element {
 
   const primaryAA = meetsAA(form.theme.colors.primary, form.theme.colors.onPrimary);
   const textAA = meetsAA(form.theme.colors.text, form.theme.colors.bg);
+
+  // Language-aware bindings for the Content section (§ multilingual forms):
+  // when editing a non-default language these read/write form.translations
+  // instead of the base column, with the base text shown as a placeholder.
+  const welcomeTextField = useTranslatableFormField('welcomeText');
+  const welcomeBtnField = useTranslatableFormField('welcomeButtonLabel');
+  const thankYouField = useTranslatableFormField('thankYouText');
+  const privacyField = useTranslatableFormField('privacyNotice');
 
   return (
     <div className="space-y-5">
@@ -241,22 +251,30 @@ export function SettingsPanel(): JSX.Element {
       </Section>
 
       <Section title="Content">
+        {!welcomeTextField.isDefault ? (
+          <p className="mb-3 text-xs text-slate-500">
+            Editing {languageInfo(editingLang)?.nativeName ?? editingLang}. Leave a field blank to fall back to the
+            default-language text shown as its placeholder.
+          </p>
+        ) : null}
         <div className="space-y-3">
           <div>
             <Label htmlFor="welcome-text">Welcome text</Label>
             <Textarea
               id="welcome-text"
               rows={2}
-              value={form.welcomeText}
-              onChange={(e) => setField('welcomeText', e.target.value)}
+              value={welcomeTextField.value}
+              placeholder={welcomeTextField.placeholder}
+              onChange={(e) => welcomeTextField.onChange(e.target.value)}
             />
           </div>
           <div>
             <Label htmlFor="welcome-btn">Start button label</Label>
             <Input
               id="welcome-btn"
-              value={form.welcomeButtonLabel}
-              onChange={(e) => setField('welcomeButtonLabel', e.target.value)}
+              value={welcomeBtnField.value}
+              placeholder={welcomeBtnField.placeholder}
+              onChange={(e) => welcomeBtnField.onChange(e.target.value)}
             />
           </div>
           <div>
@@ -264,8 +282,9 @@ export function SettingsPanel(): JSX.Element {
             <Textarea
               id="thankyou-text"
               rows={2}
-              value={form.thankYouText}
-              onChange={(e) => setField('thankYouText', e.target.value)}
+              value={thankYouField.value}
+              placeholder={thankYouField.placeholder}
+              onChange={(e) => thankYouField.onChange(e.target.value)}
             />
           </div>
           <div>
@@ -273,8 +292,9 @@ export function SettingsPanel(): JSX.Element {
             <Textarea
               id="privacy-text"
               rows={2}
-              value={form.privacyNotice}
-              onChange={(e) => setField('privacyNotice', e.target.value)}
+              value={privacyField.value}
+              placeholder={privacyField.placeholder}
+              onChange={(e) => privacyField.onChange(e.target.value)}
             />
           </div>
         </div>

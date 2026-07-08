@@ -16,6 +16,8 @@ import { Badge, Button, Input, Spinner } from './components/ui';
 import { ArrowLeftIcon } from './components/icons';
 import { ToastProvider, useToast } from './components/Toast';
 import { PreviewMapping } from './components/PreviewMapping';
+import { LanguageBar } from './components/LanguageBar';
+import { useTranslatableFormField } from './hooks/useTranslatable';
 import { Palette } from './panels/Palette';
 import { Canvas } from './panels/Canvas';
 import { SettingsPanel } from './panels/SettingsPanel';
@@ -151,6 +153,7 @@ function BuilderInner(): JSX.Element {
     );
   }
 
+  const titleField = useTranslatableFormField('title');
   const saving = saveMutation.isPending;
   const publishing = publishMutation.isPending;
   // An invalid custom slug must block Save/Publish so the builder gets immediate
@@ -175,13 +178,13 @@ function BuilderInner(): JSX.Element {
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Input
             aria-label="Form title"
             className="max-w-xs"
-            value={store.form.title}
-            placeholder="Untitled form"
-            onChange={(e) => store.setField('title', e.target.value)}
+            value={titleField.value}
+            placeholder={titleField.placeholder ?? 'Untitled form'}
+            onChange={(e) => titleField.onChange(e.target.value)}
           />
           {status === 'published' ? <Badge tone="green">Published</Badge> : <Badge tone="slate">Draft</Badge>}
           {dirty ? <Badge tone="amber">Unsaved changes</Badge> : <Badge tone="slate">Saved</Badge>}
@@ -195,6 +198,7 @@ function BuilderInner(): JSX.Element {
               /{slug}
             </a>
           ) : null}
+          <LanguageBar />
         </div>
         <div className="flex items-center gap-2">
           {formId ? <PreviewMapping formId={formId} /> : null}
