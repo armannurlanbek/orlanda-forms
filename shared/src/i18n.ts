@@ -97,3 +97,130 @@ export function localizedOptionLabel(
   const label = translations[lang]?.optionLabels?.[baseOption];
   return label !== undefined && label !== '' ? label : baseOption;
 }
+
+// ── Stable validation codes (populated by validateAnswers; localized client-side) ──
+export type ValidationCode =
+  | 'required'
+  | 'chooseOption'
+  | 'chooseAtLeastOne'
+  | 'invalidOption'
+  | 'duplicate'
+  | 'mustBeNumber'
+  | 'min'
+  | 'max'
+  | 'maxLength'
+  | 'uploadRequired'
+  | 'invalid'
+  | 'unknownQuestion';
+
+// ── Built-in public-form chrome + standard validation messages ────────────────
+export interface UiStrings {
+  languageLabel: string;
+  submit: string;
+  start: string;
+  back: string;
+  next: string;
+  // validation (min/max/maxLength use {n})
+  required: string;
+  chooseOption: string;
+  chooseAtLeastOne: string;
+  invalidOption: string;
+  duplicate: string;
+  mustBeNumber: string;
+  min: string;
+  max: string;
+  maxLength: string;
+  uploadRequired: string;
+  invalid: string;
+}
+
+const EN: UiStrings = {
+  languageLabel: 'Language',
+  submit: 'Submit',
+  start: 'Start',
+  back: 'Back',
+  next: 'Next',
+  required: 'This field is required.',
+  chooseOption: 'Please choose an option.',
+  chooseAtLeastOne: 'Please choose at least one option.',
+  invalidOption: 'Invalid option selected.',
+  duplicate: 'Duplicate options selected.',
+  mustBeNumber: 'Must be a number.',
+  min: 'Must be at least {n}.',
+  max: 'Must be at most {n}.',
+  maxLength: 'Maximum {n} characters.',
+  uploadRequired: 'Please upload a file.',
+  invalid: 'Invalid answer.',
+};
+
+const RU: UiStrings = {
+  languageLabel: 'Язык',
+  submit: 'Отправить',
+  start: 'Начать',
+  back: 'Назад',
+  next: 'Далее',
+  required: 'Это поле обязательно.',
+  chooseOption: 'Пожалуйста, выберите вариант.',
+  chooseAtLeastOne: 'Выберите хотя бы один вариант.',
+  invalidOption: 'Выбран недопустимый вариант.',
+  duplicate: 'Выбраны повторяющиеся варианты.',
+  mustBeNumber: 'Должно быть числом.',
+  min: 'Не менее {n}.',
+  max: 'Не более {n}.',
+  maxLength: 'Максимум {n} символов.',
+  uploadRequired: 'Пожалуйста, загрузите файл.',
+  invalid: 'Недопустимый ответ.',
+};
+
+const AR: UiStrings = {
+  languageLabel: 'اللغة',
+  submit: 'إرسال',
+  start: 'ابدأ',
+  back: 'رجوع',
+  next: 'التالي',
+  required: 'هذا الحقل مطلوب.',
+  chooseOption: 'يرجى اختيار خيار.',
+  chooseAtLeastOne: 'يرجى اختيار خيار واحد على الأقل.',
+  invalidOption: 'تم اختيار خيار غير صالح.',
+  duplicate: 'تم اختيار خيارات مكررة.',
+  mustBeNumber: 'يجب أن يكون رقمًا.',
+  min: 'يجب ألا يقل عن {n}.',
+  max: 'يجب ألا يزيد عن {n}.',
+  maxLength: 'الحد الأقصى {n} حرفًا.',
+  uploadRequired: 'يرجى رفع ملف.',
+  invalid: 'إجابة غير صالحة.',
+};
+
+const HE: UiStrings = {
+  languageLabel: 'שפה',
+  submit: 'שליחה',
+  start: 'התחלה',
+  back: 'חזרה',
+  next: 'הבא',
+  required: 'שדה חובה.',
+  chooseOption: 'יש לבחור אפשרות.',
+  chooseAtLeastOne: 'יש לבחור לפחות אפשרות אחת.',
+  invalidOption: 'נבחרה אפשרות לא חוקית.',
+  duplicate: 'נבחרו אפשרויות כפולות.',
+  mustBeNumber: 'חייב להיות מספר.',
+  min: 'לפחות {n}.',
+  max: 'לכל היותר {n}.',
+  maxLength: 'עד {n} תווים.',
+  uploadRequired: 'יש להעלות קובץ.',
+  invalid: 'תשובה לא חוקית.',
+};
+
+// Languages without a full dictionary reuse English chrome (acceptable fallback).
+export const UI_STRINGS: Record<string, UiStrings> = {
+  en: EN, ru: RU, ar: AR, he: HE,
+  kk: EN, uk: RU, tr: EN, de: EN, fr: EN, es: EN,
+};
+
+export function uiStrings(lang: string): UiStrings {
+  return UI_STRINGS[lang] ?? EN;
+}
+
+/** Replace the single `{n}` placeholder with a number. */
+export function formatUiString(template: string, n: number | string): string {
+  return template.replace('{n}', String(n));
+}

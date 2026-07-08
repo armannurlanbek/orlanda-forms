@@ -62,3 +62,20 @@ describe('resolution helpers', () => {
     expect(localizedOptionLabel('Yes', undefined, 'ar', 'en')).toBe('Yes');
   });
 });
+
+import { UI_STRINGS, uiStrings, formatUiString } from './i18n';
+
+describe('UI strings', () => {
+  it('covers every supported language', () => {
+    for (const l of SUPPORTED_LANGUAGES) {
+      expect(UI_STRINGS[l.code]).toBeDefined();
+      expect(UI_STRINGS[l.code].submit.length).toBeGreaterThan(0);
+    }
+  });
+  it('falls back to English for an unknown language', () => {
+    expect(uiStrings('zz').submit).toBe(UI_STRINGS.en.submit);
+  });
+  it('interpolates {n}', () => {
+    expect(formatUiString('Max {n} characters.', 5)).toBe('Max 5 characters.');
+  });
+});
