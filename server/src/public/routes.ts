@@ -10,6 +10,8 @@ import {
   type PublicFormDTO,
   type PublicQuestionDTO,
   type QuestionConfig,
+  type FormTranslations,
+  type QuestionTranslations,
 } from '@orlanda/shared';
 import { prisma } from '../db/prisma';
 import { asyncHandler, notFound } from '../http/errors';
@@ -43,6 +45,7 @@ publicRouter.get(
       helpText: q.helpText,
       required: q.required,
       options: (q.options as QuestionConfig | null) ?? null,
+      translations: (q.translations as QuestionTranslations | null) ?? null,
     }));
 
     // Re-validate the stored theme at the public boundary (§16.8): only validated
@@ -58,6 +61,9 @@ publicRouter.get(
 
     const dto: PublicFormDTO = {
       slug: form.slug,
+      defaultLang: form.defaultLang,
+      languages: form.languages.length ? form.languages : [form.defaultLang],
+      translations: (form.translations as FormTranslations | null) ?? null,
       title: form.title,
       description: form.description,
       welcomeText: form.welcomeText,
