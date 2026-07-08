@@ -43,3 +43,22 @@ describe('pickInitialLanguage', () => {
     expect(pickInitialLanguage(offered, [], 'ar')).toBe('ar');
   });
 });
+
+import { localizedOptionLabel, resolveText } from './i18n';
+import type { QuestionTranslations } from './i18n';
+
+describe('resolution helpers', () => {
+  it('resolveText falls back on empty/undefined translation', () => {
+    expect(resolveText('Base', 'Traducido')).toBe('Traducido');
+    expect(resolveText('Base', '')).toBe('Base');
+    expect(resolveText('Base', undefined)).toBe('Base');
+    expect(resolveText('Base', null)).toBe('Base');
+  });
+  it('localizedOptionLabel returns base for the default language', () => {
+    const t: QuestionTranslations = { ar: { optionLabels: { Yes: 'نعم' } } };
+    expect(localizedOptionLabel('Yes', t, 'en', 'en')).toBe('Yes'); // default lang
+    expect(localizedOptionLabel('Yes', t, 'ar', 'en')).toBe('نعم');
+    expect(localizedOptionLabel('No', t, 'ar', 'en')).toBe('No'); // untranslated -> base
+    expect(localizedOptionLabel('Yes', undefined, 'ar', 'en')).toBe('Yes');
+  });
+});

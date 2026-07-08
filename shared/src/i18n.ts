@@ -58,3 +58,42 @@ export function pickInitialLanguage(
   }
   return defaultLang;
 }
+
+// ── Translation payloads (stored as JSON on Form/Question; non-default langs) ──
+export interface FormTextTranslation {
+  title?: string;
+  description?: string;
+  welcomeText?: string;
+  welcomeButtonLabel?: string;
+  thankYouText?: string;
+  privacyNotice?: string;
+}
+export type FormTranslations = Record<string, FormTextTranslation>;
+
+export interface QuestionTextTranslation {
+  label?: string;
+  helpText?: string;
+  /** base option string -> shown label in this language. Unknown keys ignored. */
+  optionLabels?: Record<string, string>;
+}
+export type QuestionTranslations = Record<string, QuestionTextTranslation>;
+
+/** The translated value if it is a non-empty string; otherwise the base value. */
+export function resolveText<T extends string | null | undefined>(
+  base: T,
+  translated: string | null | undefined,
+): T | string {
+  return translated !== undefined && translated !== null && translated !== '' ? translated : base;
+}
+
+/** Shown label for a base option in `lang`, falling back to the base string. */
+export function localizedOptionLabel(
+  baseOption: string,
+  translations: QuestionTranslations | undefined | null,
+  lang: string,
+  defaultLang: string,
+): string {
+  if (lang === defaultLang || !translations) return baseOption;
+  const label = translations[lang]?.optionLabels?.[baseOption];
+  return label !== undefined && label !== '' ? label : baseOption;
+}
