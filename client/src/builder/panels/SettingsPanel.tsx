@@ -1,16 +1,17 @@
 // Right panel — Settings + Mapping. Board selection + schema refresh, the
 // Direct/AI mode toggle and the matching mapping UI, welcome/thank-you/privacy
 // content, theme colors (with AA warnings), logo upload, and the daily cap.
+import { useState } from 'react';
 import type { MappingMode, Theme } from '@orlanda/shared';
-import { meetsAA, slugError } from '@orlanda/shared';
+import { SUPPORTED_LANGUAGES, languageInfo, meetsAA, slugError } from '@orlanda/shared';
 import { useBuilderStore } from '../store';
 import { useBoardSchema, useBoards, useRefreshBoardSchema } from '../hooks/useMonday';
 import { DirectMapping } from './DirectMapping';
 import { AiMapping } from './AiMapping';
 import { ColorField } from '../components/ColorField';
 import { LogoUpload } from '../components/LogoUpload';
-import { Button, Input, Label, Select, Spinner, Textarea } from '../components/ui';
-import { RefreshIcon } from '../components/icons';
+import { Badge, Button, Input, Label, Select, Spinner, Textarea } from '../components/ui';
+import { RefreshIcon, TrashIcon } from '../components/icons';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -42,6 +43,102 @@ function ModeToggle({ mode, onChange }: { mode: MappingMode; onChange: (m: Mappi
   );
 }
 
+// Languages section: offered set + default language + inline-confirm removal
+// (§ multilingual forms). `languages` is the full offered set INCLUDING the
+// default; an empty store value means single-language (just the default).
+function LanguageSettings(): JSX.Element {
+  const form = useBuilderStore((s) => s.form);
+  const addLanguage = useBuilderStore((s) => s.addLanguage);
+  const removeLanguage = useBuilderStore((s) => s.removeLanguage);
+  const setDefaultLang = useBuilderStore((s) => s.setDefaultLang);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  const offered = form.languages.length ? form.languages : [form.defaultLang];
+  const addable = SUPPORTED_LANGUAGES.filter((l) => !offered.includes(l.code));
+  const extras = offered.filter((code) => code !== form.defaultLang);
+
+  return (
+    <Section title="Languages">
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="default-lang">Default language</Label>
+          <Select id="default-lang" value={form.defaultLang} onChange={(e) => setDefaultLang(e.target.value)}>
+            {offered.map((code) => (
+              <option key={code} value={code}>
+                {languageInfo(code)?.nativeName ?? code}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {extras.length > 0 ? (
+          <div>
+            <Label>Also offered</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              {extras.map((code) => (
+                <div key={code} className="flex items-center gap-1">
+                  <Badge tone="slate">{languageInfo(code)?.nativeName ?? code}</Badge>
+                  {confirmRemove === code ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => {
+                          removeLanguage(code);
+                          setConfirmRemove(null);
+                        }}
+                      >
+                        Confirm
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmRemove(null)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Remove ${languageInfo(code)?.name ?? code}`}
+                      onClick={() => setConfirmRemove(code)}
+                    >
+                      <TrashIcon size={14} />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {addable.length > 0 ? (
+          <div>
+            <Label htmlFor="add-lang">Add language</Label>
+            <Select
+              id="add-lang"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) addLanguage(e.target.value);
+              }}
+            >
+              <option value="">— Add a language —</option>
+              {addable.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.nativeName}
+                </option>
+              ))}
+            </Select>
+          </div>
+        ) : null}
+
+        <p className="text-xs text-slate-500">
+          Visitors see the form in their browser&rsquo;s language and can switch; untranslated text falls back to
+          the default.
+        </p>
+      </div>
+    </Section>
+  );
+}
+
 export function SettingsPanel(): JSX.Element {
   const form = useBuilderStore((s) => s.form);
   const status = useBuilderStore((s) => s.status);
@@ -69,6 +166,8 @@ export function SettingsPanel(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      <LanguageSettings />
+
       <Section title="Public link">
         <Label htmlFor="form-slug">Custom link</Label>
         <div className="flex items-center gap-1">
