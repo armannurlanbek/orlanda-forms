@@ -24,3 +24,31 @@ describe('toSaveInput slug guard', () => {
     expect(useBuilderStore.getState().toSaveInput().slug).toBeUndefined();
   });
 });
+
+describe('multilingual forms: languages + translations', () => {
+  beforeEach(() => {
+    useBuilderStore.getState().reset();
+  });
+
+  it('round-trips languages + translations through toSaveInput', () => {
+    const s = useBuilderStore.getState();
+    s.reset();
+    s.addLanguage('ar'); // en default + ar
+    s.setTranslatedFormField('ar', 'title', 'عنوان');
+    const out = useBuilderStore.getState().toSaveInput();
+    expect(out.languages).toContain('ar');
+    expect(out.defaultLang).toBe('en');
+    expect(out.translations?.ar?.title).toBe('عنوان');
+  });
+
+  it('removeLanguage drops its translations', () => {
+    const s = useBuilderStore.getState();
+    s.reset();
+    s.addLanguage('ar');
+    s.setTranslatedFormField('ar', 'title', 'x');
+    s.removeLanguage('ar');
+    const out = useBuilderStore.getState().toSaveInput();
+    expect(out.languages).not.toContain('ar');
+    expect(out.translations?.ar).toBeUndefined();
+  });
+});
