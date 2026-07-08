@@ -8,8 +8,10 @@ import type {
   AnswersMap,
   FormDetail,
   FormSummary,
+  FormTranslations,
   PreviewMappingResult,
   QuestionInput,
+  QuestionTranslations,
   SaveFormInput,
   SubmissionRow,
 } from '@orlanda/shared';
@@ -57,6 +59,7 @@ function toQuestionDetail(q: Question): QuestionInput & { id: string; order: num
     helpText: q.helpText,
     required: q.required,
     options: (q.options as QuestionInput['options']) ?? null,
+    translations: (q.translations as QuestionTranslations | null) ?? null,
     directMapping: (q.directMapping as QuestionInput['directMapping']) ?? null,
   };
 }
@@ -66,6 +69,9 @@ function toFormDetail(form: Form, questions: Question[]): FormDetail {
   return {
     id: form.id,
     slug: form.slug,
+    defaultLang: form.defaultLang,
+    languages: form.languages,
+    translations: (form.translations as FormTranslations | null) ?? null,
     title: form.title,
     description: form.description,
     status: form.status,
@@ -205,6 +211,11 @@ export async function saveForm(id: string, body: unknown): Promise<FormDetail> {
           ...slugUpdate,
           title: input.title,
           description: input.description ?? null,
+        // Language set is validated upstream (validateSaveInput, §Task 9); we
+        // persist whatever it approved rather than re-enforcing/throwing here.
+        defaultLang: input.defaultLang ?? 'en',
+        languages: input.languages ?? [],
+        translations: (input.translations ?? undefined) as Prisma.InputJsonValue | undefined,
         boardId: input.boardId ?? null,
         mappingMode: input.mappingMode,
         aiPrompt: input.aiPrompt ?? null,
@@ -239,6 +250,7 @@ export async function saveForm(id: string, body: unknown): Promise<FormDetail> {
         required: q.required,
         options:
           q.options == null ? Prisma.JsonNull : (q.options as unknown as Prisma.InputJsonValue),
+        translations: (q.translations ?? undefined) as Prisma.InputJsonValue | undefined,
         directMapping:
           q.directMapping == null
             ? Prisma.JsonNull
