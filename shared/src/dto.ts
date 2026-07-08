@@ -4,6 +4,7 @@
 import type { MappingMode, FormStatus, QuestionType, Role, SubmissionStatus, QuestionConfig } from './types';
 import type { Theme } from './theme';
 import type { AllowlistColumn } from './monday';
+import type { FormTranslations, QuestionTranslations } from './i18n';
 
 // ── Public (unauthenticated) — render-safe ONLY (§16.6) ─────────────────────
 export interface PublicQuestionDTO {
@@ -14,10 +15,14 @@ export interface PublicQuestionDTO {
   helpText?: string | null;
   required: boolean;
   options?: QuestionConfig | null;
+  translations?: QuestionTranslations | null;
 }
 
 export interface PublicFormDTO {
   slug: string;
+  defaultLang: string;
+  languages: string[]; // offered set incl. default (>=1), display order
+  translations?: FormTranslations | null;
   title: string;
   description?: string | null;
   welcomeText?: string | null;
@@ -65,6 +70,7 @@ export interface QuestionInput {
   helpText?: string | null;
   required: boolean;
   options?: QuestionConfig | null;
+  translations?: QuestionTranslations | null;
   // Direct mode mapping: { columnId, columnType, ...perTypeExtras } (§12.3).
   directMapping?: { columnId: string; columnType: string; [k: string]: unknown } | null;
 }
@@ -72,6 +78,9 @@ export interface QuestionInput {
 export interface FormDetail {
   id: string;
   slug: string;
+  defaultLang: string;
+  languages: string[];
+  translations?: FormTranslations | null;
   title: string;
   description?: string | null;
   status: FormStatus;
@@ -98,6 +107,9 @@ export interface SaveFormInput {
   /** Optional custom public link (slug). When present and changed, the server
    *  validates + enforces global uniqueness. Omit to keep the current slug. */
   slug?: string;
+  defaultLang?: string;
+  languages?: string[];
+  translations?: FormTranslations | null;
   description?: string | null;
   boardId?: string | null;
   mappingMode: MappingMode;
