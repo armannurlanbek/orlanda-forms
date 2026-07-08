@@ -1,16 +1,18 @@
 // Thank-you screen (§4 public side, screen 3): thankYouText confirmation ONLY.
 // Nothing internal — no mapping details, no board info, no Monday item link.
-import type { PublicFormDTO } from '@orlanda/shared';
+import { resolveText, type PublicFormDTO } from '@orlanda/shared';
 import { ScreenShell } from './ScreenShell';
 
 const DEFAULT_THANK_YOU = 'Thank you. Your response has been submitted.';
 
 interface Props {
   form: PublicFormDTO;
+  activeLang: string;
 }
 
-export function ThankYouScreen({ form }: Props): JSX.Element {
-  const message = form.thankYouText?.trim() || DEFAULT_THANK_YOU;
+export function ThankYouScreen({ form, activeLang }: Props): JSX.Element {
+  const t = activeLang === form.defaultLang ? undefined : form.translations?.[activeLang];
+  const message = resolveText(form.thankYouText, t?.thankYouText)?.trim() || DEFAULT_THANK_YOU;
 
   return (
     <ScreenShell

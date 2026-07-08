@@ -109,18 +109,19 @@ function PublicForm({ form }: { form: PublicFormDTO }): JSX.Element {
         </div>
       )}
       {screen === 'welcome' && (
-        <WelcomeScreen form={form} onStart={() => setScreen('questions')} />
+        <WelcomeScreen form={form} activeLang={activeLang} onStart={() => setScreen('questions')} />
       )}
       {screen === 'questions' && (
         <QuestionsScreen
           form={form}
           controller={controller}
+          activeLang={activeLang}
           submitting={submitting}
           formError={formError}
           onSubmit={handleSubmit}
         />
       )}
-      {screen === 'thankyou' && <ThankYouScreen form={form} />}
+      {screen === 'thankyou' && <ThankYouScreen form={form} activeLang={activeLang} />}
     </main>
   );
 }

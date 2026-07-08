@@ -1,7 +1,7 @@
 // Welcome screen (§4 public side, screen 1): Orlanda logo + welcomeText + Start
 // button. Privacy notice shown here before submission (§16.9). All builder text
 // rendered as plain text (never dangerouslySetInnerHTML) (§16.7).
-import type { PublicFormDTO } from '@orlanda/shared';
+import { resolveText, type PublicFormDTO } from '@orlanda/shared';
 import { ScreenShell } from './ScreenShell';
 import { resolveLogoUrl } from '../theme';
 
@@ -10,17 +10,26 @@ const DEFAULT_PRIVACY =
 
 interface Props {
   form: PublicFormDTO;
+  activeLang: string;
   onStart: () => void;
 }
 
-export function WelcomeScreen({ form, onStart }: Props): JSX.Element {
+export function WelcomeScreen({ form, activeLang, onStart }: Props): JSX.Element {
   const logoUrl = resolveLogoUrl(form.theme);
-  const privacy = form.privacyNotice?.trim() || DEFAULT_PRIVACY;
+
+  // Form-level text in the active language, falling back to the base
+  // (default-language) text when untranslated (§ resolveText).
+  const t = activeLang === form.defaultLang ? undefined : form.translations?.[activeLang];
+  const title = resolveText(form.title, t?.title);
+  const description = resolveText(form.description, t?.description);
+  const welcomeText = resolveText(form.welcomeText, t?.welcomeText);
+  const welcomeButtonLabel = resolveText(form.welcomeButtonLabel, t?.welcomeButtonLabel);
+  const privacy = resolveText(form.privacyNotice, t?.privacyNotice)?.trim() || DEFAULT_PRIVACY;
 
   return (
     <ScreenShell
       screenKey="welcome"
-      heading={form.title}
+      heading={title}
       beforeHeading={
         <div className="mb-6 flex flex-col items-center text-center">
           {logoUrl ? (
@@ -38,13 +47,13 @@ export function WelcomeScreen({ form, onStart }: Props): JSX.Element {
       }
       headingClassName="text-center text-2xl font-bold text-brand-text"
     >
-      {form.description && (
-        <p className="mt-2 text-center text-base text-brand-text/80">{form.description}</p>
+      {description && (
+        <p className="mt-2 text-center text-base text-brand-text/80">{description}</p>
       )}
 
-      {form.welcomeText && (
+      {welcomeText && (
         <p className="mt-4 whitespace-pre-line text-center text-base text-brand-text/90">
-          {form.welcomeText}
+          {welcomeText}
         </p>
       )}
 
@@ -53,7 +62,7 @@ export function WelcomeScreen({ form, onStart }: Props): JSX.Element {
         onClick={onStart}
         className="mt-8 flex min-h-tap w-full items-center justify-center rounded-lg bg-brand-primary px-6 py-3 text-base font-semibold text-brand-onPrimary shadow-sm transition-colors hover:opacity-90"
       >
-        {form.welcomeButtonLabel || 'Start'}
+        {welcomeButtonLabel || 'Start'}
       </button>
 
       <p className="mt-6 text-center text-xs leading-relaxed text-brand-text/80">{privacy}</p>

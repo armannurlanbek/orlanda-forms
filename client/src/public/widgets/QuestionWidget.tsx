@@ -6,7 +6,7 @@
 //   multi_select  -> checkbox group, honoring min/max selection hints
 //   attachment    -> file control (§17.5, mobile-first)
 import { useEffect, useRef } from 'react';
-import type { PublicQuestionDTO } from '@orlanda/shared';
+import { localizedOptionLabel, resolveText, type PublicQuestionDTO } from '@orlanda/shared';
 import { Field, controlClass, type FieldIds } from './Field';
 import { AttachmentWidget } from './AttachmentWidget';
 import type { RawValue, FilesByQuestion } from '../usePublicForm';
@@ -20,6 +20,11 @@ interface Props {
   value: RawValue;
   files: FilesByQuestion;
   error?: string;
+  /** Multilingual forms: the visitor's active display language and the form's
+   *  base language. Display-only — the submitted answer always stays the base
+   *  option string; only the visible label is localized (canonical submit). */
+  activeLang: string;
+  defaultLang: string;
   onChange: (questionId: string, value: RawValue) => void;
   onToggleMulti: (questionId: string, option: string, checked: boolean) => void;
   onAddFiles: (questionId: string, list: FileList | File[]) => void;
@@ -28,15 +33,21 @@ interface Props {
 }
 
 export function QuestionWidget(props: Props): JSX.Element {
-  const { question: q, error, onBlurValidate } = props;
+  const { question: q, error, activeLang, defaultLang, onBlurValidate } = props;
   const baseId = `q-${q.id}`;
   const cfg = q.options ?? {};
   const blur = () => onBlurValidate(q.id);
 
+  // Resolve the question's own label/help in the active language, falling
+  // back to the base (default-language) text when untranslated.
+  const qt = activeLang === defaultLang ? undefined : q.translations?.[activeLang];
+  const label = resolveText(q.label, qt?.label);
+  const helpText = resolveText(q.helpText, qt?.helpText);
+
   return (
     <Field
-      label={q.label}
-      helpText={q.helpText}
+      label={label}
+      helpText={helpText}
       required={q.required}
       error={error}
       baseId={baseId}
@@ -76,6 +87,8 @@ type SharedCtrl = {
   q: PublicQuestionDTO;
   ids: FieldIds;
   value: RawValue;
+  activeLang: string;
+  defaultLang: string;
   onChange: (questionId: string, value: RawValue) => void;
   onBlur?: () => void;
 };
@@ -157,9 +170,19 @@ function NumberControl({
   );
 }
 
-function SingleSelectControl({ q, ids, value, onChange, onBlur }: SharedCtrl): JSX.Element {
+function SingleSelectControl({
+  q,
+  ids,
+  value,
+  activeLang,
+  defaultLang,
+  onChange,
+  onBlur,
+}: SharedCtrl): JSX.Element {
   const opts = q.options?.options ?? [];
   const selected = typeof value === 'string' ? value : '';
+  // Canonical submit: `value`/onChange always carry the BASE option string —
+  // only the visible label text is localized via localizedOptionLabel().
 
   if (opts.length > NATIVE_SELECT_THRESHOLD) {
     return (
@@ -177,7 +200,7 @@ function SingleSelectControl({ q, ids, value, onChange, onBlur }: SharedCtrl): J
         <option value="">Select an option…</option>
         {opts.map((opt) => (
           <option key={opt} value={opt}>
-            {opt}
+            {localizedOptionLabel(opt, q.translations, activeLang, defaultLang)}
           </option>
         ))}
       </select>
@@ -210,7 +233,9 @@ function SingleSelectControl({ q, ids, value, onChange, onBlur }: SharedCtrl): J
               onChange={() => onChange(q.id, opt)}
               onBlur={onBlur}
             />
-            <span className="text-base text-brand-text">{opt}</span>
+            <span className="text-base text-brand-text">
+              {localizedOptionLabel(opt, q.translations, activeLang, defaultLang)}
+            </span>
           </label>
         );
       })}
@@ -222,6 +247,8 @@ function MultiSelectControl({
   q,
   ids,
   value,
+  activeLang,
+  defaultLang,
   onToggleMulti,
 }: SharedCtrl & {
   onToggleMulti: (questionId: string, option: string, checked: boolean) => void;
@@ -260,7 +287,9 @@ function MultiSelectControl({
               className="h-5 w-5 accent-brand-primary"
               onChange={(e) => onToggleMulti(q.id, opt, e.target.checked)}
             />
-            <span className="text-base text-brand-text">{opt}</span>
+            <span className="text-base text-brand-text">
+              {localizedOptionLabel(opt, q.translations, activeLang, defaultLang)}
+            </span>
           </label>
         );
       })}

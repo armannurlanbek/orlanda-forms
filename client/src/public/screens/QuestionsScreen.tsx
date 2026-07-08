@@ -3,7 +3,7 @@
 // with a submitting state. Validation reuses the shared validator via the
 // usePublicForm hook. On submit-with-errors we focus the first invalid field.
 import { useRef } from 'react';
-import type { PublicFormDTO } from '@orlanda/shared';
+import { resolveText, uiStrings, type PublicFormDTO } from '@orlanda/shared';
 import { ScreenShell } from './ScreenShell';
 import { QuestionWidget } from '../widgets/QuestionWidget';
 import type { UsePublicFormResult } from '../usePublicForm';
@@ -11,6 +11,7 @@ import type { UsePublicFormResult } from '../usePublicForm';
 interface Props {
   form: PublicFormDTO;
   controller: UsePublicFormResult;
+  activeLang: string;
   submitting: boolean;
   formError: string | null;
   onSubmit: () => void;
@@ -19,6 +20,7 @@ interface Props {
 export function QuestionsScreen({
   form,
   controller,
+  activeLang,
   submitting,
   formError,
   onSubmit,
@@ -43,10 +45,17 @@ export function QuestionsScreen({
 
   const sorted = [...form.questions].sort((a, b) => a.order - b.order);
 
+  // Form-level text (title/description) in the active language, falling back
+  // to the base (default-language) text when untranslated.
+  const t = activeLang === form.defaultLang ? undefined : form.translations?.[activeLang];
+  const title = resolveText(form.title, t?.title);
+  const description = resolveText(form.description, t?.description);
+  const submitLabel = uiStrings(activeLang).submit;
+
   return (
-    <ScreenShell screenKey="questions" heading={form.title}>
-      {form.description && (
-        <p className="mt-1 mb-4 text-base text-brand-text/80">{form.description}</p>
+    <ScreenShell screenKey="questions" heading={title}>
+      {description && (
+        <p className="mt-1 mb-4 text-base text-brand-text/80">{description}</p>
       )}
 
       {/* Subtle, themed length hint — only for longer forms; short forms stay clean. */}
@@ -63,6 +72,8 @@ export function QuestionsScreen({
             value={controller.raw[q.id]}
             files={controller.files}
             error={controller.errors[q.id]}
+            activeLang={activeLang}
+            defaultLang={form.defaultLang}
             onChange={controller.setValue}
             onToggleMulti={controller.toggleMulti}
             onAddFiles={controller.addFiles}
@@ -88,7 +99,7 @@ export function QuestionsScreen({
           className="flex min-h-tap w-full items-center justify-center gap-2 rounded-lg bg-brand-primary px-6 py-3 text-base font-semibold text-brand-onPrimary shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting && <Spinner />}
-          {submitting ? 'Submitting…' : 'Submit'}
+          {submitting ? 'Submitting…' : submitLabel}
         </button>
       </form>
     </ScreenShell>
