@@ -83,6 +83,63 @@ describe('validateSaveInput', () => {
   });
 });
 
+// ── Language set (Task 9 — multilingual forms) ───────────────────────────────
+describe('validateSaveInput — language set', () => {
+  it('rejects an unsupported language code', () => {
+    expect(() =>
+      validateSaveInput(validBody({ defaultLang: 'en', languages: ['en', 'zz'] })),
+    ).toThrow(AppError);
+  });
+
+  it('rejects when defaultLang is not in a non-empty languages set', () => {
+    expect(() =>
+      validateSaveInput(validBody({ defaultLang: 'ar', languages: ['en', 'ru'] })),
+    ).toThrow(AppError);
+  });
+
+  it('rejects a translation keyed for a language not in the offered set', () => {
+    expect(() =>
+      validateSaveInput(
+        validBody({
+          defaultLang: 'en',
+          languages: ['en', 'ru'],
+          translations: { ar: { title: 'x' } },
+        }),
+      ),
+    ).toThrow(AppError);
+  });
+
+  it('rejects a duplicate language in the offered set', () => {
+    expect(() =>
+      validateSaveInput(validBody({ defaultLang: 'en', languages: ['en', 'en'] })),
+    ).toThrow(AppError);
+  });
+
+  it('accepts a valid multilingual set', () => {
+    const out = validateSaveInput(
+      validBody({
+        defaultLang: 'en',
+        languages: ['en', 'ar'],
+        translations: { ar: { title: 'x' } },
+      }),
+    );
+    expect(out.defaultLang).toBe('en');
+    expect(out.languages).toEqual(['en', 'ar']);
+    expect(out.translations).toEqual({ ar: { title: 'x' } });
+  });
+
+  it('accepts a single-language form (empty languages)', () => {
+    const out = validateSaveInput(validBody({ defaultLang: 'en', languages: [] }));
+    expect(out.languages).toEqual([]);
+  });
+
+  it('accepts an omitted language set entirely (defaults applied downstream)', () => {
+    const out = validateSaveInput(validBody({}));
+    expect(out.defaultLang).toBeUndefined();
+    expect(out.languages).toBeUndefined();
+  });
+});
+
 // ── checkPublishPreconditions ─────────────────────────────────────────────────
 
 function form(overrides: Partial<Form> = {}): Pick<Form, 'boardId' | 'mappingMode' | 'aiPrompt'> {

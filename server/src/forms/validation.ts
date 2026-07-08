@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 import type { SaveFormInput } from '@orlanda/shared';
-import { QUESTION_TYPES } from '@orlanda/shared';
+import { QUESTION_TYPES, isSupportedLanguage } from '@orlanda/shared';
 import type { Form, Question } from '@prisma/client';
 import { badRequest } from '../http/errors';
 
@@ -90,9 +90,37 @@ const saveFormInputSchema = z
     privacyNotice: z.string().nullable().optional(),
     theme: z.unknown().nullable().optional(),
     dailySubmissionCap: z.number().int().positive().optional(),
+    // Multilingual forms (display-only — §Task 9): languages is the full
+    // offered set INCLUDING defaultLang; empty means single-language.
+    defaultLang: z.string().optional(),
+    languages: z.array(z.string()).optional(),
+    translations: z.record(z.string(), z.record(z.string(), z.string().nullable().optional())).optional(),
     questions: z.array(questionSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((val, ctx) => {
+    const def = val.defaultLang ?? 'en';
+    if (!isSupportedLanguage(def)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['defaultLang'], message: 'Unsupported language.' });
+    }
+    const langs = val.languages ?? [];
+    for (const l of langs) {
+      if (!isSupportedLanguage(l)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['languages'], message: `Unsupported language: ${l}.` });
+      }
+    }
+    if (new Set(langs).size !== langs.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['languages'], message: 'Duplicate language.' });
+    }
+    if (langs.length > 0 && !langs.includes(def)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['languages'], message: 'Default language must be included.' });
+    }
+    for (const key of Object.keys(val.translations ?? {})) {
+      if (langs.length > 0 && !langs.includes(key)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['translations'], message: `Translation for a non-offered language: ${key}.` });
+      }
+    }
+  });
 
 /**
  * Validate + parse a SaveFormInput body. Throws AppError(400) with field-keyed
