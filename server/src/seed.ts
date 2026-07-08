@@ -30,15 +30,18 @@ async function main(): Promise<void> {
   // Re-seeding RESETS the admin password (and role) to the current env value —
   // this is the documented recovery path, so `update` must set passwordHash, not
   // be a no-op (otherwise an existing admin can never have its password changed).
-  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   const user = await prisma.user.upsert({
     where: { email },
     update: { passwordHash, role: 'admin' },
     create: { email, name: 'Orlanda Admin', role: 'admin', passwordHash },
   });
 
+  // On a fresh create Prisma stamps createdAt and updatedAt with the same instant;
+  // an update bumps updatedAt. Derive the log word from the returned row so we don't
+  // need a second query just to phrase the message.
+  const wasCreated = user.createdAt.getTime() === user.updatedAt.getTime();
   // eslint-disable-next-line no-console
-  console.log(`\nAdmin user ${existing ? 'password reset' : 'created'}: ${user.email}`);
+  console.log(`\nAdmin user ${wasCreated ? 'created' : 'password reset'}: ${user.email}`);
   if (generated) {
     // eslint-disable-next-line no-console
     console.log(`Generated admin password (save it now, shown once): ${password}\n`);

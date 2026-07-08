@@ -51,6 +51,12 @@ const MAX_LINK_REPAIRS = 2;
 // How many ranked candidates we surface per search (and add to the allow-set).
 const TOP_CANDIDATES = 8;
 
+// Turn budget for the linked loop: MAX_SEARCH_ROUNDS search round-trips +
+// MAX_LINK_REPAIRS link-repair bounces + the forced final emit + its single repair
+// turn (+2), plus 1 slack turn so a boundary interleaving of the two counters can
+// never cut off a legitimate final emit. Worst case reaches a finalize well within.
+const LINKED_LOOP_TURN_BUDGET = MAX_SEARCH_ROUNDS + MAX_LINK_REPAIRS + 3;
+
 // JSON schema for the forced tool. additionalProperties:false at the top level;
 // columnValues itself allows additional properties (the model keys it by
 // allow-listed columnId — the validator drops anything not on the allow-list).
@@ -319,6 +325,15 @@ async function runLinkedSearch(
   };
 }
 
+/** The normalized linked-item id IFF it came from a search_linked_board result
+ *  (present in the per-board allow-set); otherwise null. Single source of truth for
+ *  the "never trust an unsearched/hallucinated id" rule (§18). */
+function trustedLinkId(col: AllowlistColumn, raw: unknown, allowSet: LinkAllowSet): string | null {
+  const id = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
+  const allowed = col.linkBoardId ? allowSet.get(col.linkBoardId) : undefined;
+  return id && allowed && allowed.has(id) ? id : null;
+}
+
 /**
  * Validate the emitted link-column values against the per-board allow-set and
  * convert survivors to wire shape via formatColumnValue('board_relation', id).
@@ -353,15 +368,14 @@ function resolveLinkColumns(
       continue;
     }
 
-    // The model may emit a number or a string; normalize to a string id.
-    const id = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
-    const allowed = col.linkBoardId ? allowSet.get(col.linkBoardId) : undefined;
-    if (!id || !allowed || !allowed.has(id)) {
+    // Accept the id ONLY if it came from a search_linked_board result (§18).
+    const trusted = trustedLinkId(col, raw, allowSet);
+    if (!trusted) {
       dropped.push({ columnId: col.columnId, reason: 'linked item id not found via search' });
       continue;
     }
 
-    const res = formatColumnValue('board_relation', id);
+    const res = formatColumnValue('board_relation', trusted);
     if (res.ok) {
       columnValues[col.columnId] = res.value;
     } else {
@@ -414,9 +428,8 @@ function unresolvedLinkColumns(
     if (!col.linkBoardId) continue;
     const raw = cv[col.columnId];
     if (raw === undefined || raw === null || raw === '') continue; // omitted — fine
-    const id = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
-    const allowed = allowSet.get(col.linkBoardId);
-    if (!id || !allowed || !allowed.has(id)) out.push(col);
+    // Same trust rule as resolveLinkColumns: unresolved unless the id was searched.
+    if (!trustedLinkId(col, raw, allowSet)) out.push(col);
   }
   return out;
 }
@@ -603,7 +616,7 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
 
   // Each iteration is one model turn. Budget covers searches + link-repair
   // bounces + the forced final emit + one repair turn.
-  for (let turn = 0; turn < MAX_SEARCH_ROUNDS + MAX_LINK_REPAIRS + 3; turn++) {
+  for (let turn = 0; turn < LINKED_LOOP_TURN_BUDGET; turn++) {
     const forceEmit = searchRounds >= MAX_SEARCH_ROUNDS;
     const msg = await callAnthropic(client, {
       system,
@@ -658,32 +671,38 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
       }
       if (didSearch) searchRounds += 1;
 
+      // The emit block's unresolved-link set against the POST-search allow-set,
+      // computed ONCE and reused by both the Phase 2 accept-check and the Phase 3
+      // reminder. NOTE: this is the post-search state — distinct from the top-of-loop
+      // accept-gate, which is evaluated against the PRE-search allow-set. When there
+      // is no emit block this turn, fall back to every link column (worst case).
+      const emitUnresolved = emitInput
+        ? unresolvedLinkColumns(emitInput, params.allowlist, allowSet)
+        : params.allowlist.filter((c) => isLinkColumn(c.type));
+
       // Phase 2: with those searches applied, an emit block in this same turn may
       // now be fully resolved. Re-evaluate against the UPDATED allow-set; if every
       // link id now came from a search, accept the emit instead of bouncing it. We
       // are NOT sending another message, so the already-run search blocks need no
       // further answer. A hallucinated id still fails this check (its id is not in
       // the allow-set) and falls through to a bounce below — no invented ids.
-      if (emitInput && unresolvedLinkColumns(emitInput, params.allowlist, allowSet).length === 0) {
+      if (emitInput && emitUnresolved.length === 0) {
         return finalize(emitInput, lastRaw);
       }
 
       // Phase 3: answer the remaining (non-search) blocks. An emit block that STILL
-      // has unresolved links is bounced with a reminder built from the RECOMPUTED
+      // has unresolved links is bounced with a reminder built from the post-search
       // unresolved set; any other tool name gets a generic corrective.
       let didLinkRepair = false;
       for (const block of toolUses) {
         if (block.name === SEARCH_TOOL_NAME) continue;
         if (block.name === TOOL_NAME) {
           // emit with still-unresolved link ids → reject, tell the model to search.
-          const unresolved = emitInput
-            ? unresolvedLinkColumns(emitInput, params.allowlist, allowSet)
-            : params.allowlist.filter((c) => isLinkColumn(c.type));
           didLinkRepair = true;
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id!,
-            content: buildLinkSearchReminder(unresolved),
+            content: buildLinkSearchReminder(emitUnresolved),
             is_error: true,
           });
         } else {

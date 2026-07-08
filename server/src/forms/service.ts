@@ -178,11 +178,13 @@ export async function saveForm(id: string, body: unknown): Promise<FormDetail> {
   // unique here (overrides the old "immutable once published" rule — changing a
   // published form's slug intentionally retires the old URL; the builder warns).
   let slugUpdate: { slug?: string } = {};
-  if (typeof input.slug === 'string' && input.slug.trim().toLowerCase() !== form.slug) {
+  if (typeof input.slug === 'string') {
     const candidate = input.slug.trim().toLowerCase();
-    const err = slugError(candidate);
-    if (err) throw badRequest(err, { slug: err });
-    slugUpdate = { slug: candidate };
+    if (candidate !== form.slug) {
+      const err = slugError(candidate);
+      if (err) throw badRequest(err, { slug: err });
+      slugUpdate = { slug: candidate };
+    }
   }
 
   const existing = await prisma.question.findMany({
