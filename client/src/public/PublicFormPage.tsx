@@ -9,7 +9,7 @@ import type { PublicFormDTO } from '@orlanda/shared';
 import { api, ApiError } from '../lib/api';
 import { NotFoundPage } from './NotFoundPage';
 import { themeToCssVars } from './theme';
-import { usePublicForm } from './usePublicForm';
+import { useActiveLang, usePublicForm } from './usePublicForm';
 import { submitPublicForm } from './submit';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { QuestionsScreen } from './screens/QuestionsScreen';
@@ -65,7 +65,8 @@ function PublicForm({ form }: { form: PublicFormDTO }): JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const controller = usePublicForm(form.questions);
+  const { activeLang } = useActiveLang(form);
+  const controller = usePublicForm(form.questions, activeLang);
   const themeVars = useMemo(() => themeToCssVars(form.theme), [form.theme]);
 
   // One idempotency key per submission attempt; reused on double-tap/retry so a
