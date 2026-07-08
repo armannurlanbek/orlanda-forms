@@ -2,7 +2,7 @@
 // title, blocks the reserved-path set, and generates a globally-unique slug by
 // looping on the DB unique constraint (NOT pre-check-then-insert, which races).
 
-import { RESERVED_SLUGS } from '@orlanda/shared';
+import { RESERVED_SLUGS, SLUG_MIN_LENGTH } from '@orlanda/shared';
 import { prisma } from '../db/prisma';
 
 /**
@@ -41,7 +41,14 @@ const RESERVED_SET = new Set<string>(RESERVED_SLUGS as readonly string[]);
  * constraint enforced at insert time (the create loop retries on conflict).
  */
 export async function generateUniqueSlug(title: string): Promise<string> {
-  const base = slugify(title) || 'form';
+  // Generated slugs must satisfy the shared `slugError` validator (§15.3.1), or
+  // the builder's Settings panel shows a false-positive "Link must be N–M
+  // characters." error on an untouched, working auto-slug. `slugify` may return
+  // a string shorter than SLUG_MIN_LENGTH (e.g. "Hi" → "hi"), so fall back to
+  // the 'form' base whenever the slugified title is too short (this also covers
+  // the empty case). The min-length guarantee belongs here, not in `slugify`.
+  const slugified = slugify(title);
+  const base = slugified.length >= SLUG_MIN_LENGTH ? slugified : 'form';
 
   // Pull the slugs that share this base so we can pick the first free suffix in
   // one query rather than N round-trips. Still only a hint — see create loop.

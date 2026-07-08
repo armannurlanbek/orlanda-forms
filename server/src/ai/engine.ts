@@ -407,10 +407,15 @@ function unresolvedLinkColumns(
   const out: AllowlistColumn[] = [];
   for (const col of allowlist) {
     if (!isLinkColumn(col.type)) continue;
+    // No linkBoardId → there is no board to search, so this column can NEVER be
+    // resolved by search_linked_board. Skip it (do NOT treat it as unresolved-but-
+    // fixable): bouncing it would waste Anthropic calls, then resolveLinkColumns
+    // drops it anyway in finalize. Dropping it in a single call is the right move.
+    if (!col.linkBoardId) continue;
     const raw = cv[col.columnId];
     if (raw === undefined || raw === null || raw === '') continue; // omitted — fine
     const id = typeof raw === 'number' || typeof raw === 'string' ? String(raw) : '';
-    const allowed = col.linkBoardId ? allowSet.get(col.linkBoardId) : undefined;
+    const allowed = allowSet.get(col.linkBoardId);
     if (!id || !allowed || !allowed.has(id)) out.push(col);
   }
   return out;
@@ -461,10 +466,13 @@ export async function runAiMapping(params: {
     stableBlock,
   });
 
-  // 2) Daily call ceiling (atomic increment, §16.1/§18.8). Compute the counter
-  //    key once so a refund on a failed call targets the same reserved slot.
+  // 2) Daily call ceiling: compute the counter key ONCE so every per-call
+  //    reservation (and any refund) targets the same row (no midnight drift). The
+  //    reservation itself now happens PER CALL inside callAnthropic, so the
+  //    ai-calls:<day> counter reflects real Anthropic spend — the linked loop may
+  //    issue several messages.create calls, not just one (§16.1/§18.8). Guards
+  //    above still run first, so we never reserve a slot for a request we reject.
   const reservationKey = aiCallCounterKey(new Date());
-  await enforceDailyCeiling(reservationKey);
 
   const client = new Anthropic({
     apiKey: env.ANTHROPIC_API_KEY,
@@ -628,45 +636,65 @@ async function runLinkedLoop(ctx: LoopCtx & { allowSet: LinkAllowSet }): Promise
     }
 
     // Answer EVERY tool_use block in the turn (parallel tool use is allowed; the
-    // API requires a tool_result for each). Search blocks run; an emit block with
-    // unresolved links is bounced back with a search reminder.
+    // API requires a tool_result for each). Run ALL search blocks FIRST so their
+    // results land in the allow-set BEFORE we re-evaluate any emit block issued in
+    // the SAME turn — otherwise a valid parallel search+emit would be wrongly
+    // bounced with an empty reminder and its (valid) emit discarded.
     const toolUses = findAllToolUse(msg).filter((b) => b.id);
     if (toolUses.length > 0) {
       const toolResults: ToolResultBlock[] = [];
+
+      // Phase 1: run every search block, mutating the allow-set.
       let didSearch = false;
+      for (const block of toolUses) {
+        if (block.name !== SEARCH_TOOL_NAME) continue;
+        const result = await runLinkedSearch(block.input, allowSet);
+        didSearch = true;
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id!,
+          content: JSON.stringify({ candidates: result.candidates }),
+        });
+      }
+      if (didSearch) searchRounds += 1;
+
+      // Phase 2: with those searches applied, an emit block in this same turn may
+      // now be fully resolved. Re-evaluate against the UPDATED allow-set; if every
+      // link id now came from a search, accept the emit instead of bouncing it. We
+      // are NOT sending another message, so the already-run search blocks need no
+      // further answer. A hallucinated id still fails this check (its id is not in
+      // the allow-set) and falls through to a bounce below — no invented ids.
+      if (emitInput && unresolvedLinkColumns(emitInput, params.allowlist, allowSet).length === 0) {
+        return finalize(emitInput, lastRaw);
+      }
+
+      // Phase 3: answer the remaining (non-search) blocks. An emit block that STILL
+      // has unresolved links is bounced with a reminder built from the RECOMPUTED
+      // unresolved set; any other tool name gets a generic corrective.
       let didLinkRepair = false;
       for (const block of toolUses) {
-        if (!block.id) continue;
-        if (block.name === SEARCH_TOOL_NAME) {
-          const result = await runLinkedSearch(block.input, allowSet);
-          didSearch = true;
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: JSON.stringify({ candidates: result.candidates }),
-          });
-        } else if (block.name === TOOL_NAME) {
-          // emit with unresolved link ids → reject, tell the model to search.
+        if (block.name === SEARCH_TOOL_NAME) continue;
+        if (block.name === TOOL_NAME) {
+          // emit with still-unresolved link ids → reject, tell the model to search.
           const unresolved = emitInput
             ? unresolvedLinkColumns(emitInput, params.allowlist, allowSet)
             : params.allowlist.filter((c) => isLinkColumn(c.type));
           didLinkRepair = true;
           toolResults.push({
             type: 'tool_result',
-            tool_use_id: block.id,
+            tool_use_id: block.id!,
             content: buildLinkSearchReminder(unresolved),
             is_error: true,
           });
         } else {
           toolResults.push({
             type: 'tool_result',
-            tool_use_id: block.id,
+            tool_use_id: block.id!,
             content: 'Use search_linked_board to look up linked items, then emit_mapping.',
             is_error: true,
           });
         }
       }
-      if (didSearch) searchRounds += 1;
       if (didLinkRepair) linkRepairs += 1;
       messages.push({ role: 'assistant', content: msg.content });
       messages.push({ role: 'user', content: toolResults });
@@ -699,6 +727,14 @@ async function callAnthropic(
     reservationKey: string;
   },
 ): Promise<Anthropic.Message> {
+  // Reserve today's daily-call slot IMMEDIATELY before sending (§16.1/§18.8), so
+  // the ai-calls:<day> counter is incremented once per real Anthropic call — the
+  // linked loop can issue up to MAX_SEARCH_ROUNDS + MAX_LINK_REPAIRS + repair
+  // calls. A ceiling breach throws terminal from HERE, BEFORE the try: it is not a
+  // transport failure, so it is NOT refunded (the slot was correctly consumed).
+  // Each reserve is atomic immediately before its send, preserving concurrency
+  // safety (two racing requests cannot both slip past the boundary).
+  await enforceDailyCeiling(args.reservationKey);
   try {
     return await client.messages.create({
       model: env.ANTHROPIC_MODEL,

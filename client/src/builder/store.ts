@@ -13,7 +13,7 @@ import type {
   SaveFormInput,
   Theme,
 } from '@orlanda/shared';
-import { DEFAULT_THEME } from '@orlanda/shared';
+import { DEFAULT_THEME, slugError } from '@orlanda/shared';
 
 // A question as held in the store. `key` is a stable client-only id used as the
 // dnd-kit / React key for both saved and brand-new questions. `serverId` is the
@@ -250,11 +250,15 @@ export const useBuilderStore = create<BuilderStore>((set, get) => ({
 
   toSaveInput: () => {
     const { form, questions } = get();
+    // Only send the slug when it is non-empty AND valid, so a mistyped slug can
+    // never 400 the whole save and lose the builder's other edits (Finding #2).
+    // An empty field is coerced to undefined → the server keeps the current slug
+    // (Finding #7). The inline SettingsPanel error still forces the user to fix an
+    // invalid slug for the change to take effect.
+    const slugValid = form.slug && slugError(form.slug) === null;
     return {
       title: form.title,
-      // Only send the slug when set; the server keeps the current slug otherwise
-      // and validates + enforces uniqueness when it actually changes.
-      slug: form.slug || undefined,
+      slug: slugValid ? form.slug : undefined,
       description: form.description || null,
       boardId: form.boardId,
       mappingMode: form.mappingMode,

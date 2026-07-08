@@ -103,6 +103,17 @@ describe('generateUniqueSlug', () => {
     // "api" is reserved, so the base must be suffixed.
     expect(await generateUniqueSlug('API')).toBe('api-2');
   });
+
+  it('falls back to "form" for titles whose slug is shorter than SLUG_MIN_LENGTH', async () => {
+    // slugify('Hi') === 'hi' (2 chars) would fail the shared slugError min-length
+    // and trigger a false-positive in the builder — the generator must not emit it.
+    for (const title of ['Hi', 'A', '42']) {
+      const result = await generateUniqueSlug(title);
+      expect(result.length).toBeGreaterThanOrEqual(3);
+      expect(slugError(result)).toBeNull();
+      expect(result).toBe('form');
+    }
+  });
 });
 
 describe('slugError (shared validator for custom links)', () => {

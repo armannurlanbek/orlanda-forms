@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FormDetail } from '@orlanda/shared';
+import { slugError } from '@orlanda/shared';
 import { ApiError, api } from '../lib/api';
 import { useBuilderStore } from './store';
 import { useBeforeUnloadGuard, useGuardedNavigate } from './hooks/useUnsavedGuard';
@@ -152,7 +153,12 @@ function BuilderInner(): JSX.Element {
 
   const saving = saveMutation.isPending;
   const publishing = publishMutation.isPending;
-  const publishDisabled = dirty || !readiness.ready || publishing || !formId;
+  // An invalid custom slug must block Save/Publish so the builder gets immediate
+  // feedback instead of a silent partial save (Finding #2). `toSaveInput` also
+  // drops an invalid slug defensively, but gating here surfaces the error.
+  const slugErr = store.form.slug ? slugError(store.form.slug) : null;
+  const saveDisabled = saving || !formId || slugErr !== null;
+  const publishDisabled = dirty || !readiness.ready || publishing || !formId || slugErr !== null;
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
@@ -199,7 +205,12 @@ function BuilderInner(): JSX.Element {
           >
             Submissions
           </Button>
-          <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saving || !formId}>
+          <Button
+            variant="primary"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveDisabled}
+            title={slugErr ?? ''}
+          >
             {saving ? <Spinner /> : null}
             {saving ? 'Saving…' : 'Save'}
           </Button>
@@ -207,13 +218,20 @@ function BuilderInner(): JSX.Element {
             variant="success"
             onClick={onPublish}
             disabled={publishDisabled}
-            title={dirty ? 'Save before publishing' : readiness.ready ? '' : readiness.issues[0]}
+            title={slugErr ?? (dirty ? 'Save before publishing' : readiness.ready ? '' : readiness.issues[0])}
           >
             {publishing ? <Spinner /> : null}
             Publish
           </Button>
         </div>
       </div>
+
+      {/* Invalid custom link blocks saving (Finding #2) */}
+      {slugErr ? (
+        <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+          Fix the custom link before saving: {slugErr}
+        </div>
+      ) : null}
 
       {/* Readiness hints */}
       {!readiness.ready ? (

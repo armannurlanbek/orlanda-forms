@@ -393,6 +393,90 @@ describe('runAiMapping — link-column search + emit loop (§18 linked items)', 
     expect(fourthArgs.tool_choice).toEqual({ type: 'tool', name: 'emit_mapping' });
     expect(res.columnValues.link_b).toEqual({ item_ids: [999] });
   });
+
+  it('accepts a parallel search+emit in ONE turn without a spurious is_error bounce', async () => {
+    // FIX #6: a single assistant turn carries BOTH a search_linked_board block
+    // (that returns the id) AND an emit_mapping block using that id. The search
+    // must run first, then the emit is re-evaluated against the updated allow-set
+    // and accepted in the SAME turn — no empty reminder, no discarded valid emit.
+    searchBoardItemsByNameMock.mockResolvedValue([{ id: '999', name: 'Acme Corp' }]);
+
+    const parallelSearchEmit = {
+      id: 'msg_parallel_se',
+      role: 'assistant',
+      content: [
+        { type: 'tool_use', id: 'se_search', name: 'search_linked_board', input: { boardId: '555', query: 'Acme' } },
+        {
+          type: 'tool_use',
+          id: 'se_emit',
+          name: 'emit_mapping',
+          input: { itemName: 'Acme', columnValues: { link_b: 999 }, reasoning: 'ok' },
+        },
+      ],
+      stop_reason: 'tool_use',
+    };
+    createMock.mockResolvedValueOnce(parallelSearchEmit);
+
+    const { runAiMapping } = await import('./engine');
+    const res = await runAiMapping({ ...baseParams, allowlist: linkAllowlist });
+
+    // Accepted in the same turn → exactly ONE Anthropic call, link resolved.
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(res.columnValues.link_b).toEqual({ item_ids: [999] });
+    expect(res.dropped.find((d) => d.columnId === 'link_b')).toBeUndefined();
+
+    // No corrective/is_error reminder was ever sent (that would require a 2nd call).
+    const sentIsError = createMock.mock.calls.some(
+      ([args]: [{ messages: { role: string; content: unknown }[] }]) =>
+        args.messages.some(
+          (m) =>
+            m.role === 'user' &&
+            Array.isArray(m.content) &&
+            (m.content[0] as { is_error?: boolean })?.is_error === true,
+        ),
+    );
+    expect(sentIsError).toBe(false);
+  });
+
+  it('does NOT bounce a link column with no linkBoardId — dropped in a single call', async () => {
+    // FIX #5: a link column whose linkBoardId is missing can never be resolved by
+    // search (no board to search), so it must NOT trigger a bounce. The emit is
+    // accepted on the first turn and the column is simply dropped in finalize.
+    const noBoardAllowlist: AllowlistColumn[] = [
+      { columnId: 'text_a', title: 'Notes', type: 'text' },
+      { columnId: 'link_c', title: 'Project', type: 'board_relation' }, // no linkBoardId
+    ];
+    createMock.mockResolvedValueOnce(
+      emitMsg({ itemName: 'Acme', columnValues: { text_a: 'hi', link_c: 999 }, reasoning: 'guess' }),
+    );
+
+    const { runAiMapping } = await import('./engine');
+    const res = await runAiMapping({ ...baseParams, allowlist: noBoardAllowlist });
+
+    // Accepted on the FIRST turn (no wasted search bounce) → exactly one call.
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(searchBoardItemsByNameMock).not.toHaveBeenCalled();
+
+    // The board-less link column can never resolve → dropped, never written.
+    expect(res.columnValues.link_c).toBeUndefined();
+    expect(res.dropped).toContainEqual({
+      columnId: 'link_c',
+      reason: 'linked item id not found via search',
+    });
+    expect(res.columnValues.text_a).toBe('hi');
+
+    // No is_error corrective was sent.
+    const sentIsError = createMock.mock.calls.some(
+      ([args]: [{ messages: { role: string; content: unknown }[] }]) =>
+        args.messages.some(
+          (m) =>
+            m.role === 'user' &&
+            Array.isArray(m.content) &&
+            (m.content[0] as { is_error?: boolean })?.is_error === true,
+        ),
+    );
+    expect(sentIsError).toBe(false);
+  });
 });
 
 describe('runAiMapping — no link columns keep single forced emit (unchanged)', () => {
@@ -481,6 +565,50 @@ describe('runAiMapping — daily ceiling refund on a failed Anthropic call (§16
     const { runAiMapping } = await import('./engine');
     await expect(runAiMapping(params)).rejects.toBeInstanceOf(AiError);
 
+    // Two forced-emit attempts were sent → two reservations (per-call accounting),
+    // and neither is refunded (both calls succeeded and consumed quota).
+    expect(createMock).toHaveBeenCalledTimes(2);
+    expect(usageUpsertMock).toHaveBeenCalledTimes(2);
+    expect(usageUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('reserves one daily-call slot PER messages.create call across a linked flow', async () => {
+    // FIX #3: the ai-calls:<day> counter must count real Anthropic calls, not
+    // mappings. A linked flow that searches then emits makes two messages.create
+    // calls → exactly two reservations (one per call, atomic before each send).
+    const linkAllowlist: AllowlistColumn[] = [
+      { columnId: 'text_a', title: 'Notes', type: 'text' },
+      { columnId: 'link_b', title: 'Project', type: 'board_relation', linkBoardId: '555' },
+    ];
+    searchBoardItemsByNameMock.mockResolvedValue([{ id: '999', name: 'Acme Corp' }]);
+    createMock
+      .mockResolvedValueOnce({
+        id: 'msg_search',
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'toolu_search', name: 'search_linked_board', input: { boardId: '555', query: 'Acme' } }],
+        stop_reason: 'tool_use',
+      })
+      .mockResolvedValueOnce({
+        id: 'msg_emit',
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'toolu_emit', name: 'emit_mapping', input: { itemName: 'Acme', columnValues: { link_b: 999 }, reasoning: 'ok' } }],
+        stop_reason: 'tool_use',
+      });
+
+    const { runAiMapping } = await import('./engine');
+    const res = await runAiMapping({
+      aiPrompt: 'Map it.',
+      allowlist: linkAllowlist,
+      questions: [],
+      answers: {},
+    });
+
+    expect(res.columnValues.link_b).toEqual({ item_ids: [999] });
+    // Two Anthropic calls (search turn + emit turn) → exactly two reservations.
+    expect(createMock).toHaveBeenCalledTimes(2);
+    expect(usageUpsertMock).toHaveBeenCalledTimes(2);
+    expect(usageUpsertMock).toHaveBeenCalledTimes(createMock.mock.calls.length);
+    // Every call succeeded → no refunds.
     expect(usageUpdateMock).not.toHaveBeenCalled();
   });
 });

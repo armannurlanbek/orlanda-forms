@@ -45,6 +45,9 @@ function ModeToggle({ mode, onChange }: { mode: MappingMode; onChange: (m: Mappi
 export function SettingsPanel(): JSX.Element {
   const form = useBuilderStore((s) => s.form);
   const status = useBuilderStore((s) => s.status);
+  // The persisted (last-saved) slug — used to tell the user that clearing the
+  // field keeps their current public link rather than removing it (Finding #7).
+  const savedSlug = useBuilderStore((s) => s.slug);
   const setField = useBuilderStore((s) => s.setField);
   const setMappingMode = useBuilderStore((s) => s.setMappingMode);
   const setTheme = useBuilderStore((s) => s.setTheme);
@@ -81,6 +84,10 @@ export function SettingsPanel(): JSX.Element {
         {slugErr ? (
           <p role="alert" className="mt-1 text-xs text-red-600">
             {slugErr}
+          </p>
+        ) : !form.slug && savedSlug ? (
+          <p className="mt-1 break-all text-xs text-slate-500">
+            Leave blank to keep the current public link: {origin}/{savedSlug}
           </p>
         ) : (
           <p className="mt-1 break-all text-xs text-slate-500">
