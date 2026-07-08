@@ -97,6 +97,14 @@ with stale-lock reclaim, and runs scheduled jobs hourly (submission retention
 purge, token denylist sweep, releasing attachment bytes for long-mapped submissions
 since the files now live on Monday).
 
+Authenticated builders act on submissions through `server/src/submissions/routes.ts`:
+**retry** (`POST /submissions/:id/retry`) resets a partial/failed row into the
+claimable set and re-enters the machine — `reentryStatus` (`status.ts`) restarts from
+`received` to rebuild the mapping, and `create_item` is still skipped when
+`mondayItemId` is already set; **delete** (`DELETE /submissions/:id`) removes the
+local row and its attachment bytes (Prisma `onDelete: Cascade`) but deliberately
+leaves any already-created Monday item untouched.
+
 ### AI mapping (`server/src/ai/`)
 Backend-only (the Anthropic key never reaches the client and is never logged).
 Forced tool-use (`emit_mapping`), prompt caching via `cache_control: ephemeral` on a
@@ -121,6 +129,18 @@ Dice-coefficient fuzzy matching (threshold 0.6, **skip-and-mark-partial** on no/
 ambiguous match — never silently links the wrong item). Board schemas are cached
 (`BoardSchemaCache`) and invalidated when a terminal "column not found" error
 suggests the board changed.
+
+### Public slugs (the `/:slug` link)
+Every form has a unique `slug` that is its public URL path. It is auto-derived from
+the title on create (`server/src/forms/slug.ts` → `slugify` + `generateUniqueSlug`)
+and can be re-edited in the builder's **Public link** setting (`SettingsPanel.tsx`).
+Uniqueness is enforced by the DB unique constraint via a **retry-on-conflict loop,
+never pre-check-then-insert** (which races under concurrency); `generateUniqueSlug`'s
+pre-query is only a hint for picking the first free `-n` suffix. The reserved
+top-level paths in `RESERVED_SLUGS` (`api`, `app`, `admin`, …) are blocked so a slug
+can never shadow a real route. Format validation lives in the shared `slugError`,
+used by **both** the builder's live field feedback and the server on save — the same
+contract-first pattern as `validateAnswers`, so the two can't diverge.
 
 ### Persistence notes
 - **Attachment (and logo) bytes live in Postgres `bytea`**, not on disk, so they
