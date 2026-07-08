@@ -85,6 +85,13 @@ model Form {
   dailySubmissionCap Int         @default(200)
   privacyNotice      String?     @db.Text
 
+  // Multilingual forms: base language of title/options/etc.; `languages` is the
+  // full offered set INCLUDING defaultLang (empty => single-language). Translations
+  // are display-only — answers/mapping stay in the default language.
+  defaultLang  String   @default("en")
+  languages    String[] @default([])
+  translations Json?
+
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])
 
@@ -113,6 +120,8 @@ model Question {
   options  Json?
   // Direct mode only: { columnId, columnType, ...perTypeExtras } (§12.3).
   directMapping Json?
+  // Display-only per-language text: QuestionTranslations keyed by lang code.
+  translations Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
