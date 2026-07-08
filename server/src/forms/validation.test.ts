@@ -138,6 +138,73 @@ describe('validateSaveInput — language set', () => {
     expect(out.defaultLang).toBeUndefined();
     expect(out.languages).toBeUndefined();
   });
+
+  // Regression lock: `questionSchema` previously had no `translations` field
+  // and wasn't `.passthrough()`, so zod silently stripped
+  // `questions[i].translations` on every save — question label/helpText/
+  // optionLabels translations never persisted (form-level translations
+  // survived only because the top-level schema declared the field, masking
+  // the bug). This must parse successfully AND the parsed output must still
+  // carry the question's translations through untouched.
+  it('parses and preserves per-question translations (previously stripped by zod)', () => {
+    const out = validateSaveInput(
+      validBody({
+        defaultLang: 'en',
+        languages: ['en', 'ar'],
+        questions: [
+          {
+            type: 'text',
+            label: 'Name',
+            required: true,
+            translations: { ar: { label: 'الاسم', optionLabels: { Yes: 'نعم' } } },
+          },
+        ],
+      }),
+    );
+    expect(out.questions[0].translations?.ar?.label).toBe('الاسم');
+    expect(out.questions[0].translations?.ar?.optionLabels).toEqual({ Yes: 'نعم' });
+  });
+
+  it('rejects a question translation keyed for a language not in the offered set', () => {
+    expect(() =>
+      validateSaveInput(
+        validBody({
+          defaultLang: 'en',
+          languages: ['en', 'ar'],
+          questions: [
+            {
+              type: 'text',
+              label: 'Name',
+              required: true,
+              translations: { zz: { label: 'Nom' } },
+            },
+          ],
+        }),
+      ),
+    ).toThrow(AppError);
+  });
+
+  it('rejects any form-level translations on a single-language form', () => {
+    expect(() =>
+      validateSaveInput(
+        validBody({ defaultLang: 'en', languages: [], translations: { ar: { title: 'x' } } }),
+      ),
+    ).toThrow(AppError);
+  });
+
+  it('rejects any question-level translations on a single-language form', () => {
+    expect(() =>
+      validateSaveInput(
+        validBody({
+          defaultLang: 'en',
+          languages: [],
+          questions: [
+            { type: 'text', label: 'Name', required: true, translations: { ar: { label: 'x' } } },
+          ],
+        }),
+      ),
+    ).toThrow(AppError);
+  });
 });
 
 // ── checkPublishPreconditions ─────────────────────────────────────────────────

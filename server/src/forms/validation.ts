@@ -40,6 +40,24 @@ const directMappingSchema = z
   .nullable()
   .optional();
 
+// Per-question translations (§Task 9), shaped after shared `QuestionTextTranslation`
+// (`shared/src/i18n.ts`): keyed by language code, each entry may override the
+// question's label/helpText/optionLabels for that language. Without this field
+// zod strips `translations` from every question on save (it was previously
+// undeclared here), so it NEVER persisted even though the top-level form schema
+// declared it — that mismatch is why only form-level translations survived.
+const questionTranslationsSchema = z
+  .record(
+    z.string(),
+    z.object({
+      label: z.string().nullable().optional(),
+      helpText: z.string().nullable().optional(),
+      optionLabels: z.record(z.string(), z.string()).optional(),
+    }),
+  )
+  .nullable()
+  .optional();
+
 const questionSchema = z
   .object({
     id: z.string().min(1).optional(),
@@ -48,6 +66,7 @@ const questionSchema = z
     helpText: z.string().nullable().optional(),
     required: z.boolean(),
     options: questionConfigSchema,
+    translations: questionTranslationsSchema,
     directMapping: directMappingSchema,
   })
   .superRefine((q, ctx) => {
@@ -115,11 +134,41 @@ const saveFormInputSchema = z
     if (langs.length > 0 && !langs.includes(def)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['languages'], message: 'Default language must be included.' });
     }
-    for (const key of Object.keys(val.translations ?? {})) {
-      if (langs.length > 0 && !langs.includes(key)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['translations'], message: `Translation for a non-offered language: ${key}.` });
+
+    // Validate a translations object's language keys against the offered set,
+    // for BOTH the form-level `translations` and each question's `translations`.
+    // - Single-language form (`languages: []`): no translations allowed at all
+    //   (previously silently accepted arbitrary/unsupported keys as dead data).
+    // - Multilingual form: every key must be one of the offered languages.
+    const checkTranslationKeys = (
+      translations: Record<string, unknown> | null | undefined,
+      path: (string | number)[],
+    ) => {
+      const keys = Object.keys(translations ?? {});
+      if (keys.length === 0) return;
+      if (langs.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message: 'Translations are not allowed on a single-language form.',
+        });
+        return;
       }
-    }
+      for (const key of keys) {
+        if (!langs.includes(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path,
+            message: `Translation for a non-offered language: ${key}.`,
+          });
+        }
+      }
+    };
+
+    checkTranslationKeys(val.translations, ['translations']);
+    val.questions.forEach((q, i) => {
+      checkTranslationKeys(q.translations, ['questions', i, 'translations']);
+    });
   });
 
 /**
