@@ -44,7 +44,7 @@ export function Field({
     <>
       {label}
       {required && (
-        <span className="ml-1 text-red-600" aria-hidden="true">
+        <span className="ms-1 text-red-600" aria-hidden="true">
           *
         </span>
       )}
