@@ -68,3 +68,33 @@ describe('validateAnswers', () => {
     expect(validateAnswers([def], { a: { type: 'attachment', attachmentIds: ['x'] } }).ok).toBe(true);
   });
 });
+
+describe('validateAnswers codes (additive)', () => {
+  it('emits a required code and keeps the English error', () => {
+    const res = validateAnswers([q({ id: 'q1', type: 'text', required: true })], {});
+    expect(res.ok).toBe(false);
+    expect(res.errors.q1).toBe('This field is required.'); // unchanged
+    expect(res.codes?.q1).toBe('required');
+  });
+  it('emits invalidOption for an out-of-list select value', () => {
+    const res = validateAnswers(
+      [q({ id: 'q1', type: 'single_select', required: true, options: { options: ['a', 'b'] } })],
+      { q1: { type: 'single_select', value: 'zzz' } },
+    );
+    expect(res.codes?.q1).toBe('invalidOption');
+  });
+  it('emits maxLength and still validates a base option value', () => {
+    const long = validateAnswers(
+      [q({ id: 'q1', type: 'text', required: false, options: { maxLength: 3 } })],
+      { q1: { type: 'text', value: 'abcd' } },
+    );
+    expect(long.codes?.q1).toBe('maxLength');
+
+    const ok = validateAnswers(
+      [q({ id: 'q1', type: 'single_select', required: true, options: { options: ['Yes', 'No'] } })],
+      { q1: { type: 'single_select', value: 'Yes' } },
+    );
+    expect(ok.ok).toBe(true);
+    expect(ok.codes).toEqual({}); // no errors -> empty codes map
+  });
+});

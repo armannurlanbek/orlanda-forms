@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import type { QuestionDef, QuestionType } from './types';
+import type { ValidationCode } from './i18n';
 
 // ── Canonical per-type answer shapes ────────────────────────────────────────
 export const TextAnswer = z.object({ type: z.literal('text'), value: z.string() });
@@ -38,6 +39,8 @@ export interface ValidationResult {
   ok: boolean;
   /** per-question error messages, keyed by questionId */
   errors: Record<string, string>;
+  /** NEW (additive): stable per-question error code for client-side localization */
+  codes?: Record<string, ValidationCode>;
   /** normalized answers (e.g. number coercion) — only meaningful when ok */
   normalized: AnswersMap;
 }
@@ -83,7 +86,13 @@ export function validateAnswers(
   answers: unknown,
 ): ValidationResult {
   const errors: Record<string, string> = {};
+  const codes: Record<string, ValidationCode> = {};
   const normalized: AnswersMap = {};
+
+  const fail = (id: string, code: ValidationCode, message: string): void => {
+    errors[id] = message;
+    codes[id] = code;
+  };
 
   if (typeof answers !== 'object' || answers === null || Array.isArray(answers)) {
     return { ok: false, errors: { _form: 'Invalid answers payload.' }, normalized: {} };
@@ -94,7 +103,7 @@ export function validateAnswers(
   // 1. Reject unknown keys (prevents injection into AI prompt / column_values).
   for (const key of Object.keys(raw)) {
     if (!byId.has(key)) {
-      errors[key] = 'Unknown question.';
+      fail(key, 'unknownQuestion', 'Unknown question.');
     }
   }
 
@@ -106,17 +115,17 @@ export function validateAnswers(
     const entryObj = (present && typeof entry === 'object' ? (entry as Record<string, unknown>) : undefined);
 
     if (!present) {
-      if (q.required) errors[q.id] = 'This field is required.';
+      if (q.required) fail(q.id, 'required', 'This field is required.');
       continue;
     }
     if (!entryObj) {
-      errors[q.id] = 'Invalid answer.';
+      fail(q.id, 'invalid', 'Invalid answer.');
       continue;
     }
 
     // 8. type must equal the question's declared type.
     if (entryObj.type !== q.type) {
-      errors[q.id] = `Expected answer of type ${q.type}.`;
+      fail(q.id, 'invalid', `Expected answer of type ${q.type}.`);
       continue;
     }
 
@@ -128,11 +137,11 @@ export function validateAnswers(
       case 'long_text': {
         const value = typeof entryObj.value === 'string' ? entryObj.value.trim() : '';
         if (q.required && value === '') {
-          errors[q.id] = 'This field is required.';
+          fail(q.id, 'required', 'This field is required.');
           break;
         }
         if (cfg.maxLength && value.length > cfg.maxLength) {
-          errors[q.id] = `Maximum ${cfg.maxLength} characters.`;
+          fail(q.id, 'maxLength', `Maximum ${cfg.maxLength} characters.`);
           break;
         }
         normalized[q.id] = { type, value };
@@ -140,20 +149,20 @@ export function validateAnswers(
       }
       case 'number': {
         if (isBlank(entryObj.value)) {
-          if (q.required) errors[q.id] = 'This field is required.';
+          if (q.required) fail(q.id, 'required', 'This field is required.');
           break;
         }
         const n = parseNumeric(entryObj.value);
         if (n === null) {
-          errors[q.id] = 'Must be a number.';
+          fail(q.id, 'mustBeNumber', 'Must be a number.');
           break;
         }
         if (cfg.min !== undefined && n < cfg.min) {
-          errors[q.id] = `Must be at least ${cfg.min}.`;
+          fail(q.id, 'min', `Must be at least ${cfg.min}.`);
           break;
         }
         if (cfg.max !== undefined && n > cfg.max) {
-          errors[q.id] = `Must be at most ${cfg.max}.`;
+          fail(q.id, 'max', `Must be at most ${cfg.max}.`);
           break;
         }
         normalized[q.id] = { type: 'number', value: n };
@@ -162,12 +171,12 @@ export function validateAnswers(
       case 'single_select': {
         const value = typeof entryObj.value === 'string' ? entryObj.value : '';
         if (isBlank(value)) {
-          if (q.required) errors[q.id] = 'Please choose an option.';
+          if (q.required) fail(q.id, 'chooseOption', 'Please choose an option.');
           break;
         }
         const opts = cfg.options ?? [];
         if (!opts.includes(value)) {
-          errors[q.id] = 'Invalid option selected.';
+          fail(q.id, 'invalidOption', 'Invalid option selected.');
           break;
         }
         normalized[q.id] = { type: 'single_select', value };
@@ -176,11 +185,11 @@ export function validateAnswers(
       case 'multi_select': {
         const value = Array.isArray(entryObj.value) ? (entryObj.value as unknown[]) : null;
         if (value === null) {
-          errors[q.id] = 'Invalid selection.';
+          fail(q.id, 'invalid', 'Invalid selection.');
           break;
         }
         if (value.length === 0) {
-          if (q.required) errors[q.id] = 'Please choose at least one option.';
+          if (q.required) fail(q.id, 'chooseAtLeastOne', 'Please choose at least one option.');
           else normalized[q.id] = { type: 'multi_select', value: [] };
           break;
         }
@@ -189,19 +198,19 @@ export function validateAnswers(
         const allValid = strs.every((v) => opts.includes(v));
         const hasDupes = new Set(strs).size !== strs.length;
         if (!allValid) {
-          errors[q.id] = 'Invalid option selected.';
+          fail(q.id, 'invalidOption', 'Invalid option selected.');
           break;
         }
         if (hasDupes) {
-          errors[q.id] = 'Duplicate options selected.';
+          fail(q.id, 'duplicate', 'Duplicate options selected.');
           break;
         }
         if (cfg.minSelections && strs.length < cfg.minSelections) {
-          errors[q.id] = `Select at least ${cfg.minSelections}.`;
+          fail(q.id, 'min', `Select at least ${cfg.minSelections}.`);
           break;
         }
         if (cfg.maxSelections && strs.length > cfg.maxSelections) {
-          errors[q.id] = `Select at most ${cfg.maxSelections}.`;
+          fail(q.id, 'max', `Select at most ${cfg.maxSelections}.`);
           break;
         }
         normalized[q.id] = { type: 'multi_select', value: strs };
@@ -212,11 +221,11 @@ export function validateAnswers(
           ? (entryObj.attachmentIds as unknown[]).map((v) => String(v))
           : null;
         if (ids === null) {
-          errors[q.id] = 'Invalid attachment answer.';
+          fail(q.id, 'invalid', 'Invalid attachment answer.');
           break;
         }
         if (ids.length === 0) {
-          if (q.required) errors[q.id] = 'Please upload a file.';
+          if (q.required) fail(q.id, 'uploadRequired', 'Please upload a file.');
           else normalized[q.id] = { type: 'attachment', attachmentIds: [] };
           break;
         }
@@ -227,5 +236,5 @@ export function validateAnswers(
     }
   }
 
-  return { ok: Object.keys(errors).length === 0, errors, normalized };
+  return { ok: Object.keys(errors).length === 0, errors, codes, normalized };
 }
